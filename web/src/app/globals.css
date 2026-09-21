@@ -58,6 +58,36 @@ body {
   }
 }
 
+/* Cinta de portadas de la portada pública.
+   El desplazamiento es CSS y no JS para que la página siga siendo un Server
+   Component: la anima el compositor, sin hidratar nada. El truco es duplicar
+   la tira y moverla justo media anchura, de modo que el salto al reiniciar
+   caiga sobre una copia idéntica y no se note. */
+@keyframes peyma-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.marquee-track {
+  animation: peyma-marquee var(--marquee-duration, 60s) linear infinite;
+  width: max-content;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Quien pidió menos movimiento ve la tira quieta, no una versión lenta. */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
+
 /* Oculta la barra nativa en los carruseles horizontales (las flechas hacen el trabajo). */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

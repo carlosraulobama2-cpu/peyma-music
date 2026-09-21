@@ -84,3 +84,33 @@ export const bulkBlockTracks = (artistId: string, trackIds: string[], isBlocked:
 /** Borra varias canciones. NO es reversible. */
 export const bulkDeleteTracks = (artistId: string, trackIds: string[]) =>
   http.post<{ deleted: number }>(`/admin/artists/${artistId}/tracks/delete`, { trackIds });
+
+/** Lo que devuelve la inspección: un borrador que todavía no existe en el catálogo. */
+export interface ExtractedTrack {
+  importId: string;
+  title: string;
+  artistName: string | null;
+  albumTitle: string | null;
+  durationSeconds: number;
+  audioUrl: string;
+  coverUrl: string | null;
+  originalLufs: number | null;
+  sourceUrl: string;
+  metadataSource: 'id3' | 'opengraph' | 'filename';
+}
+
+/** Paso 1: descarga, normaliza y sube al bucket. NO crea la pista. */
+export const inspectImportUrl = (url: string) =>
+  http.post<{ extracted: ExtractedTrack }>('/admin/import/inspect', { url });
+
+/** Paso 2: crea la pista con los datos ya revisados y corregidos. */
+export const confirmImport = (payload: {
+  importId: string;
+  audioUrl: string;
+  coverUrl?: string;
+  title: string;
+  artistId: string;
+  durationSeconds: number;
+  sourceUrl: string;
+  rightsConfirmed: true;
+}) => http.post<{ track: { id: string; title: string } }>('/admin/import/confirm', payload);

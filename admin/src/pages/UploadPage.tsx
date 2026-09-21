@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Link2 } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
+import { ImportUrlModal } from '../components/ImportUrlModal';
 import { fetchArtists, type AdminArtist } from '../lib/artists';
 import { createUpload, uploadAudio, uploadCover, analyzeUpload, publishUpload, readAudioDuration } from '../lib/uploads';
 
@@ -9,6 +11,7 @@ const STEPS = ['Creando borrador', 'Subiendo audio', 'Subiendo portada', 'Analiz
 
 export function UploadPage() {
   const navigate = useNavigate();
+  const [showImport, setShowImport] = useState(false);
 
   const [artists, setArtists] = useState<AdminArtist[]>([]);
   const [artistId, setArtistId] = useState('');
@@ -70,7 +73,26 @@ export function UploadPage() {
     <AdminShell
       title="Subir canción"
       subtitle="Pasa por el mismo pipeline que una subida de artista: se analiza el ritmo y queda en la cola de moderación, no se publica sola."
+      actions={
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 text-sm font-semibold transition-colors hover:border-white"
+        >
+          <Link2 size={14} aria-hidden />
+          <span className="hidden sm:inline">Importar por URL</span>
+        </button>
+      }
     >
+        {showImport && (
+          <ImportUrlModal
+            onClose={() => setShowImport(false)}
+            // Tras importar se va a Moderación: la pista ya está publicada y
+            // es donde el administrador la ve junto al resto del catálogo.
+            onImported={() => navigate('/moderation')}
+          />
+        )}
+
         <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-5">
           <label className="flex flex-col gap-2 text-sm font-semibold">
             Artista

@@ -14,6 +14,8 @@ import {
   reviewTrackSchema,
   blockArtistSchema,
   blockPlaylistSchema,
+  importUrlSchema,
+  confirmImportSchema,
   bulkTrackActionSchema,
   querySchema,
   idParamSchema,
@@ -47,6 +49,7 @@ import {
   getPlayCounts,
 } from '../services/audienceStats';
 import { getArtistStats } from '../services/artistStats';
+import { inspectUrl } from '../services/trackImport';
 import { listSettings, setSetting, isKnownSetting, validateSettingValue } from '../services/settings';
 import { slugify } from '../utils/slug';
 import {
@@ -1429,6 +1432,117 @@ router.get('/genres', async (_req: AuthRequest, res: Response) => {
   }
 
   res.json({ genres: genres.map((genre) => ({ ...genre, artistCount: usage.get(genre.name) ?? 0 })) });
+});
+
+/**
+ * Paso 1 de la importación: extraer y previsualizar.
+ *
+ * Descarga el audio, lee sus metadatos, normaliza el volumen y lo sube al
+ * bucket — pero NO crea la pista. Devuelve el borrador para que el
+ * administrador lo revise y lo corrija.
+ *
+ * Es deliberadamente un paso aparte: las etiquetas incrustadas en un archivo
+ * suelen venir mal (el artista dentro del título, el álbum vacío, acentos
+ * rotos), y publicar a ciegas llenaría el catálogo de entradas que luego hay
+ * que arreglar a mano.
+ */
+router.post('/import/inspect', async (req: AuthRequest, res: Response) => {
+  const { url } = importUrlSchema.parse(req.body);
+
+  const extracted = await inspectUrl(url);
+
+  await record(req, {
+    action: 'import.inspect',
+    targetType: 'track',
+    targetId: extracted.importId,
+    targetLabel: extracted.title,
+    metadata: { origen: extracted.sourceUrl, metadatos: extracted.metadataSource },
+  });
+
+  res.json({ extracted });
+});
+
+/**
+ * Paso 2: confirmar y publicar.
+ *
+ * Los archivos ya están en el bucket desde la inspección; aquí sólo nace la
+ * fila de `Track` con los datos que el administrador dejó corregidos.
+ *
+ * Se exige `rightsConfirmed` y queda en la bitácora junto al enlace de
+ * origen y a quién lo publicó. Sin ese rastro, una reclamación posterior no
+ * tendría contra qué contrastarse — y este panel ya tiene un sistema de
+ * retiradas por plagio que sería incoherente sin él.
+ */
+router.post('/import/confirm', async (req: AuthRequest, res: Response) => {
+  const data = confirmImportSchema.parse(req.body);
+
+  const artist = await prisma.artist.findUnique({ where: { id: data.artistId }, select: { id: true, name: true } });
+  if (!artist) throw new NotFoundError('Artista');
+
+  if (data.albumId) {
+    const album = await prisma.album.findUnique({ where: { id: data.albumId }, select: { artistId: true } });
+    if (!album || album.artistId !== data.artistId) {
+      throw new BadRequestError('El álbum no existe o no pertenece a ese artista');
+    }
+  }
+
+  /**
+   * `Track` exige álbum. Si no se eligió ninguno se crea un álbum-sencillo
+   * con esta pista dentro, igual que hace el publicado normal en
+   * `routes/uploads.ts`: así una importación y una subida producen la misma
+   * forma de datos, y el catálogo no acaba con dos clases de pista.
+   */
+  let albumId = data.albumId;
+  if (!albumId) {
+    const single = await prisma.album.create({
+      data: {
+        title: data.title,
+        artistId: data.artistId,
+        coverUrl: data.coverUrl ?? '',
+        releaseYear: new Date().getFullYear(),
+      },
+    });
+    albumId = single.id;
+  }
+
+  const track = await prisma.track.create({
+    data: {
+      title: data.title,
+      artistId: data.artistId,
+      albumId,
+      duration: data.durationSeconds,
+      audioUrl: data.audioUrl,
+      coverUrl: data.coverUrl ?? '',
+      // Nace aprobada: la revisó un administrador en la propia pantalla de
+      // importación, que es exactamente lo que hace la cola de moderación.
+      status: 'APPROVED',
+      reviewedById: req.user!.id,
+      reviewedAt: new Date(),
+      uploadedById: req.user!.id,
+      ...(data.genre ? { primaryGenre: data.genre } : {}),
+    },
+    include: { artist: { select: { id: true, name: true } } },
+  });
+
+  await record(req, {
+    action: 'import.publish',
+    targetType: 'track',
+    targetId: track.id,
+    targetLabel: track.title,
+    metadata: {
+      origen: data.sourceUrl,
+      importId: data.importId,
+      artista: artist.name,
+      derechosDeclaradosPor: req.user!.email,
+    },
+  });
+
+  // Onda y sonoridad, para que la pista importada tenga la misma ficha
+  // técnica que una subida por un artista.
+  await enqueue('WAVEFORM', { trackId: track.id }).catch(() => {});
+  await enqueue('LOUDNESS', { trackId: track.id }).catch(() => {});
+
+  res.status(201).json({ track });
 });
 
 router.post('/genres', async (req: AuthRequest, res: Response) => {

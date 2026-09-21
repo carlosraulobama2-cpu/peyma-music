@@ -419,3 +419,30 @@ export const bulkTrackActionSchema = z.object({
   trackIds: z.array(z.string().min(1)).min(1).max(100),
   reason: z.string().trim().min(1).max(500).optional(),
 });
+
+export const importUrlSchema = z.object({
+  url: z.string().trim().min(1).max(2000),
+});
+
+/**
+ * Confirmación de una importación.
+ *
+ * `rightsConfirmed` es obligatorio y tiene que ser `true`: quien publica
+ * declara que tiene derechos sobre la grabación. Queda en la bitácora con su
+ * nombre, que es lo que convierte una importación en una decisión con
+ * responsable si después llega una reclamación.
+ */
+export const confirmImportSchema = z.object({
+  importId: z.string().uuid(),
+  audioUrl: z.string().url(),
+  coverUrl: z.string().url().optional(),
+  title: z.string().trim().min(1).max(200),
+  artistId: z.string().min(1),
+  albumId: z.string().min(1).optional(),
+  durationSeconds: z.number().int().positive().max(3600),
+  sourceUrl: z.string().url(),
+  genre: z.string().trim().min(1).max(60).optional(),
+  rightsConfirmed: z.literal(true, {
+    errorMap: () => ({ message: 'Hay que declarar que se tienen los derechos sobre la grabación.' }),
+  }),
+});
