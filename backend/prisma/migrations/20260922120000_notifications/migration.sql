@@ -1,0 +1,35 @@
+-- Peyma Music — Notificaciones reales
+--
+-- Antes la app las inventaba a partir de su estado local: decia cosas
+-- que nunca pasaron y no se enteraba de las que si. Que un admin
+-- apruebe tu cancion es un hecho del servidor y el telefono no puede
+-- saberlo por su cuenta.
+--
+-- CURADA A MANO: se omiten los DROP de las tablas huerfanas de Neon Auth.
+-- CreateEnum
+CREATE TYPE "NotificationKind" AS ENUM ('TRACK_APPROVED', 'TRACK_REJECTED', 'TRACK_TAKEDOWN', 'ARTIST_VERIFIED', 'PROMOTION_APPROVED', 'PROMOTION_REJECTED', 'NEW_FOLLOWER', 'SYSTEM');
+
+-- CreateTable
+CREATE TABLE "Notification" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "kind" "NotificationKind" NOT NULL,
+    "title" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "targetType" TEXT,
+    "targetId" TEXT,
+    "readAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "Notification_userId_readAt_idx" ON "Notification"("userId", "readAt");
+
+-- CreateIndex
+CREATE INDEX "Notification_userId_createdAt_idx" ON "Notification"("userId", "createdAt");
+
+-- AddForeignKey
+ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

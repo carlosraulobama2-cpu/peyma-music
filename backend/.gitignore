@@ -1,0 +1,20 @@
+node_modules/
+dist/
+
+# Secretos: sólo se commitea .env.example
+.env
+.env.*
+!.env.example
+
+# SQLite local (si se usa para pruebas puntuales)
+*.db
+*.db-journal
+
+# Cliente generado por Prisma
+src/generated/
+prisma/generated/
+
+*.log
+
+# Archivos subidos por usuarios (storage local de desarrollo, ver services/storage.ts)
+uploads/

@@ -1,0 +1,1028 @@
+// Peyma Music — esquema de base de datos
+//
+// PostgreSQL (no SQLite): SQLite no soporta columnas `String[]` ni
+// `mode: 'insensitive'` en búsquedas, ambos usados por las rutas de la API,
+// y un único escritor no aguanta miles de usuarios concurrentes.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: la URL de conexión ya no vive aquí — ver prisma.config.ts (para
+// el CLI: migrate/seed/studio) y src/prismaClient.ts (para el runtime, vía
+// el driver adapter de Postgres).
+datasource db {
+  provider = "postgresql"
+}
+
+// Mismo universo cerrado de géneros que `src/types/index.ts` en la app — a
+// propósito los mismos 8 valores en minúscula, para no tener dos
+// vocabularios de género que puedan divergir entre frontend y backend.
+enum Genre {
+  lofi
+  jazz
+  ambient
+  pop
+  hiphop
+  classical
+  electronic
+  rock
+}
+
+enum MusicalMode {
+  major
+  minor
+}
+
+/// Estados del pipeline de subida — ver TrackUpload y uploadPipeline.ts.
+enum UploadStatus {
+  DRAFT // creado, todavía sin archivo de audio
+  UPLOADING // subiendo audio/portada
+  ANALYZING // el motor de análisis está corriendo
+  PENDING_REVIEW // análisis listo, esperando que el creador confirme/edite
+  PUBLISHED // ya existe el Track final
+  FAILED
+  CANCELLED
+}
+
+enum PlaylistGeneratorType {
+  RHYTHM_MATCH // "porque te gustó X" — vecinos por distancia de features de audio
+  DAILY_MIX // top afinidad del usuario, con exploración
+  GENRE_MIX // todo lo publicado de un género
+}
+
+enum Role {
+  USER
+  ARTIST
+  ADMIN
+}
+
+/// Moderación admin de un Track ya publicado — distinta de `UploadStatus`
+/// (que es la revisión del propio creador ANTES de publicar). Un track nace
+/// `APPROVED` por defecto (así no oculta datos de seed/manuales existentes);
+/// el pipeline de subida (`routes/uploads.ts`) lo fuerza a `PENDING_REVIEW`
+/// explícitamente, porque ESE es el caso real que necesita el filtro admin.
+enum TrackReviewStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+/// Calidad de una variante transcodificada. El máster (.wav/.flac original)
+/// no es una variante: se guarda aparte en `Track.masterUrl` y nunca se
+/// sirve al reproductor, sólo alimenta la transcodificación.
+enum AudioQuality {
+  LOW // AAC 96 kbps  — redes lentas / ahorro de datos
+  MEDIUM // AAC 160 kbps — calidad estándar
+  HIGH // AAC 320 kbps — calidad alta
+  LOSSLESS // FLAC        — exclusivo Hi-Fi / Premium
+}
+
+/// Nivel de suscripción mínimo para poder reproducir algo. Se compara por
+/// orden, no por igualdad: un PREMIUM puede oír contenido FREE.
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+}
+
+/// Rol de una persona en los créditos de una grabación. Modelado como enum
+/// (y no texto libre) porque las liquidaciones de regalías reparten por rol
+/// y un typo silencioso ahí es dinero mal pagado.
+enum CreditRole {
+  MAIN_ARTIST
+  FEATURED_ARTIST
+  REMIXER
+  PRODUCER
+  COMPOSER // música
+  WRITER // letra
+  MIX_ENGINEER
+  MASTERING_ENGINEER
+}
+
+/// Qué alimenta una sección editorial de la portada de la app.
+enum EditorialKind {
+  MANUAL // el curador elige las pistas/álbumes a mano
+  NEW_RELEASES // lo último publicado, por fecha
+  TOP_TRACKS // más escuchadas en la ventana de 28 días
+  TOP_ALBUMS // álbumes con más reproducciones en 28 días
+  TOP_ARTISTS // artistas con más oyentes en 28 días
+}
+
+/// Cómo se dibuja la sección en la app y la web.
+enum EditorialLayout {
+  CAROUSEL // fila horizontal de tarjetas cuadradas
+  GRID // cuadrícula de dos columnas
+  HERO // banner grande, una sola pieza destacada
+}
+
+/// Consentimiento explícito para compartir ubicación aproximada.
+///
+/// Tres estados y no un booleano: hace falta distinguir "dijo que no" de
+/// "todavía no se le preguntó". Con un booleano, a quien rechaza se le
+/// volvería a preguntar en cada sesión.
+enum LocationConsent {
+  NOT_ASKED
+  GRANTED
+  DENIED
+}
+
+/// Estado de una solicitud para destacar contenido en la primera fila.
+enum PromotionStatus {
+  PENDING_APPROVAL // el artista la pidió, falta que un admin decida
+  ACTIVE // aprobada y dentro de su ventana de fechas
+  REJECTED // rechazada por un admin
+  EXPIRED // se cumplió el plazo
+  CANCELLED // la retiró el artista o un admin
+}
+
+/// Qué provocó una notificación.
+///
+/// Enum y no texto libre: cada tipo lleva su icono y su destino al tocarla,
+/// y un valor inventado dejaría una notificación que no sabe adónde ir.
+enum NotificationKind {
+  TRACK_APPROVED // tu canción pasó la revisión y ya es pública
+  TRACK_REJECTED // no pasó, con el motivo
+  TRACK_TAKEDOWN // se retiró por una reclamación de derechos
+  ARTIST_VERIFIED // te dieron el check
+  PROMOTION_APPROVED // tu campaña de primera fila está activa
+  PROMOTION_REJECTED
+  NEW_FOLLOWER
+  SYSTEM // avisos de la plataforma
+}
+
+/// Motivo por el que alguien denuncia una canción.
+enum ReportReason {
+  PLAGIARISM // plagio / uso no autorizado de una obra ajena
+  COPYRIGHT // el denunciante dice ser el titular de los derechos
+  EXPLICIT_CONTENT // contenido no señalizado como explícito
+  HATE_SPEECH // incitación al odio
+  MISLEADING_METADATA // título, artista o portada falsos
+  LOW_QUALITY // audio roto, silencio, archivo equivocado
+  OTHER
+}
+
+/// En qué punto está una denuncia.
+enum ReportStatus {
+  OPEN // recién llegada, sin revisar
+  REVIEWING // un admin la está mirando
+  UPHELD // se le dio la razón: la pista se bloqueó o se borró
+  DISMISSED // se revisó y no procede
+}
+
+/// Estado de un trabajo en la cola de procesamiento (waveform, loudness,
+/// transcodificación, portadas). Ver services/jobQueue.ts.
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// Qué hace cada trabajo. El pipeline encola varios por subida.
+enum JobKind {
+  WAVEFORM // picos de amplitud para la barra de onda
+  LOUDNESS // medición EBU R128 (LUFS integrado + true peak)
+  TRANSCODE // una variante AAC/FLAC
+  ARTWORK // recorte 1:1 + tamaños derivados
+  COLOR // paleta dominante de la portada
+  FINGERPRINT // huella acústica para detectar resubidas
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  displayName    String
+  /// Nulo para cuentas que sólo iniciaron sesión con Google — nunca tuvieron contraseña propia.
+  passwordHash   String?
+  /// `sub` del perfil de Google — único, nulo hasta que la cuenta se vincula (ver services/googleAuth.ts).
+  googleId       String?  @unique
+  avatarUrl      String?
+  favoriteGenres String[]
+  /// `ADMIN` habilita `/api/admin/moderation/*` — ver requireRole() en middleware/auth.ts.
+  role           Role     @default(USER)
+  /// Ver el enum. Sin GRANTED, la API descarta cualquier coordenada que
+  /// llegue: el consentimiento se comprueba en el servidor, no se confía en
+  /// que el cliente deje de mandarla.
+  locationConsent LocationConsent @default(NOT_ASKED)
+  locationConsentAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  playlists      Playlist[]
+  favorites      Favorite[]
+  recentlyPlayed RecentlyPlayed[]
+  following      Follow[]         @relation("UserFollowsArtists")
+  uploadedTracks Track[]          @relation("TrackUploadedBy")
+  verifiedArtists Artist[]        @relation("ArtistVerifiedBy")
+  auditLogs      AuditLog[]       @relation("AuditActor")
+  searches       SearchLog[]      @relation("UserSearches")
+  trackReports   TrackReport[]    @relation("TrackReporter")
+  notifications  Notification[]   @relation("UserNotifications")
+  promotionRequests Promotion[]   @relation("PromotionRequester")
+  reviewedPromotions Promotion[]  @relation("PromotionReviewer")
+  resolvedReports TrackReport[]   @relation("ReportResolver")
+  updatedSettings AppSetting[]    @relation("SettingUpdatedBy")
+  uploads        TrackUpload[]
+  ownedArtists   Artist[]         @relation("ArtistOwner")
+  streamLogs     StreamLog[]
+  /// Tracks que este admin aprobó/rechazó (ver Track.reviewedBy).
+  reviewedTracks Track[]          @relation("TrackReviewedBy")
+
+  @@index([email])
+  @@index([role])
+  @@index([googleId])
+}
+
+model Artist {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  imageUrl  String
+  genres    String[]
+  bio       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Bloqueo administrativo: oculta al artista y TODAS sus pistas del
+  /// catálogo público sin borrar nada, para poder revertirlo. Distinto de
+  /// eliminar, que sí destruye el contenido en cascada.
+  isBlocked Boolean  @default(false)
+
+  /// Check de verificación. Se otorga desde el panel y se muestra junto al
+  /// nombre en la app y la web. Se guarda quién lo dio y cuándo: es una
+  /// decisión editorial con consecuencias de confianza y tiene que poder
+  /// auditarse, no basta un booleano suelto.
+  isVerified   Boolean   @default(false)
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedBy   User?     @relation("ArtistVerifiedBy", fields: [verifiedById], references: [id])
+
+  /// Qué usuario administra este perfil — nulo en catálogo/seed. Se "reclama"
+  /// solo con la primera subida que se le hace (ver routes/uploads.ts); a
+  /// partir de ahí sólo ese usuario puede publicar pistas para este artista.
+  ownerId   String?
+  owner     User?         @relation("ArtistOwner", fields: [ownerId], references: [id])
+
+  albums    Album[]
+  tracks    Track[]
+  /// Seguidores — relación persistente, no vence (ver Follow más abajo).
+  followers Follow[]      @relation("ArtistFollowers")
+  uploads   TrackUpload[]
+  /// Eventos de reproducción — de acá sale "oyentes mensuales" como
+  /// COUNT(DISTINCT userId) en una ventana de 28 días, no un contador fijo
+  /// (ver services/artistStats.ts). A propósito NO hay una columna
+  /// `monthlyListeners`: guardar un entero que alguien más tiene que
+  /// incrementar a mano es exactamente la fuente de bugs ("se desincroniza
+  /// del historial real") que esta tabla de eventos evita.
+  streamLogs StreamLog[]
+  /// Créditos donde este artista aparece (feats, remixes, producción) en
+  /// pistas que no son suyas — distinto de `tracks`, que es su catálogo.
+  credits    TrackCredit[]
+  editorialItems EditorialItem[] @relation("ArtistEditorialItems")
+
+  @@index([name])
+  @@index([ownerId])
+}
+
+model Album {
+  id          String   @id @default(cuid())
+  title       String
+  coverUrl    String
+  releaseYear Int
+  /// Universal Product Code — identifica el LANZAMIENTO (el álbum), mientras
+  /// que el ISRC identifica cada grabación dentro de él.
+  upc         String?  @unique
+  /// Fecha exacta; `releaseYear` se mantiene porque el comando de búsqueda
+  /// `year:` y el catálogo existente dependen de él.
+  releaseDate DateTime?
+  /// Color dominante de la portada en HEX, calculado al procesar el artwork.
+  dominantColor String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  artistId    String
+  artist      Artist        @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tracks      Track[]
+  uploads     TrackUpload[]
+  editorialItems EditorialItem[]
+
+  @@index([artistId])
+  @@index([title])
+}
+
+model Track {
+  id             String   @id @default(cuid())
+  title          String
+  duration       Int // segundos
+  coverUrl       String
+  audioUrl       String
+  /// Género principal — lo confirma el creador en el paso de revisión del pipeline de subida.
+  genre          Genre?
+  /// Mood/ánimo (p. ej. "Relajado", "Enérgico"): texto curado a nivel de app
+  /// (ver MOODS en schemas/validation.ts), no un enum de la base — los moods
+  /// se iteran mucho más seguido que los géneros y un enum de Postgres
+  /// obligaría a una migración cada vez que se agregue uno.
+  mood           String?
+
+  /// --- Créditos y metadatos de catálogo ---
+  /// Texto libre y no relaciones: una pista puede tener varios compositores
+  /// y productores que no son usuarios de la plataforma, así que modelarlos
+  /// como tablas obligaría a crear filas fantasma para cada nombre suelto.
+  composer       String?
+  producer       String?
+  /// Sello discográfico — alimenta el comando de búsqueda `label:`.
+  label          String?
+  /// International Standard Recording Code — identificador único de la grabación (comando `isrc:`).
+  isrc           String?  @unique
+  isExplicit     Boolean  @default(false)
+  /// Versión de la grabación: "Original", "Radio Edit", "Extended Mix", … Se
+  /// muestra junto al título y distingue dos grabaciones del mismo tema, que
+  /// por eso mismo llevan ISRC distinto.
+  version        String?
+  /// Fecha exacta de lanzamiento. `Album.releaseYear` sigue existiendo para
+  /// el catálogo viejo y para el comando de búsqueda `year:`; esta es la que
+  /// usa la programación de lanzamientos (un track con fecha futura no sale
+  /// en el catálogo aunque esté APPROVED).
+  releaseDate    DateTime?
+
+  /// --- Archivo máster y derivados ---
+  /// El .wav/.flac sin pérdida tal como lo subió el sello. Nunca se sirve al
+  /// reproductor: es la fuente de la que salen todas las `AudioVariant`.
+  masterUrl      String?
+  /// Color dominante de la portada en HEX (#RRGGBB), para el fondo de las
+  /// tarjetas de la app sin tener que decodificar la imagen en el cliente.
+  dominantColor  String?
+
+  /// --- Licencias y disponibilidad ---
+  /// Países ISO 3166-1 alpha-2 donde NO se puede reproducir. Lista de bloqueo
+  /// y no de permitidos: lo normal es publicar en todo el mundo con
+  /// excepciones, así que la lista vacía (el default) es el caso común.
+  blockedCountries String[]
+  /// Suscripción mínima. El máster FLAC sólo se sirve a PREMIUM aunque el
+  /// track en sí sea FREE — eso lo decide la variante, no este campo.
+  requiredTier   SubscriptionTier @default(FREE)
+
+  /// Bloqueo de esta pista en concreto, distinto de bloquear al artista
+  /// entero. Es lo que se aplica cuando una denuncia prospera: la canción
+  /// desaparece del catálogo y deja de sonar, pero el resto del artista
+  /// sigue disponible. Reversible, a diferencia de borrarla.
+  isBlocked      Boolean  @default(false)
+  blockedReason  String?
+  blockedAt      DateTime?
+  /// Quién reclamó. Se guarda el NOMBRE, no sólo el id del usuario: el
+  /// mensaje que ve el artista infractor tiene que seguir diciendo quién
+  /// reclamó aunque esa cuenta se borre después.
+  blockedByName  String?
+
+  /// Huella acústica del máster (ver services/fingerprint.ts). Única: si otra
+  /// subida genera la misma huella es la misma grabación, y el pipeline la
+  /// rechaza antes de publicarla por segunda vez.
+  audioFingerprint String? @unique
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  /// Moderación admin — ver comentario en el enum `TrackReviewStatus`.
+  status         TrackReviewStatus @default(APPROVED)
+  reviewedById   String?
+  reviewedBy     User?             @relation("TrackReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  rejectionReason String?
+
+  artistId       String
+  artist         Artist           @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  albumId        String
+  album          Album            @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  /// Quién la subió — nulo en datos de catálogo/seed que no vinieron del pipeline de un usuario.
+  uploadedById   String?
+  uploadedBy     User?            @relation("TrackUploadedBy", fields: [uploadedById], references: [id])
+
+  playlists      PlaylistTrack[]
+  favorites      Favorite[]
+  recentlyPlayed RecentlyPlayed[]
+  streamLogs     StreamLog[]
+  analysis       AudioAnalysis?
+  lyrics         Lyrics?
+  credits        TrackCredit[]
+  reports        TrackReport[]
+  promotions     Promotion[]
+  variants       AudioVariant[]
+  editorialItems EditorialItem[]
+  jobs           ProcessingJob[]
+  /// El draft de subida que terminó publicando este Track (si vino del pipeline).
+  upload         TrackUpload?
+
+  @@index([artistId])
+  @@index([albumId])
+  @@index([title])
+  @@index([genre])
+  @@index([status])
+  @@index([releaseDate])
+}
+
+/// Una sección de la portada de la app y la web: "Lo nuevo", "Los mejores
+/// álbumes", "Mola"… El curador las crea desde el panel y salen en el mismo
+/// orden en los dos clientes.
+///
+/// `kind` decide de dónde sale el contenido. Las automáticas (NEW_RELEASES,
+/// TOP_*) se calculan al consultarlas y por eso no tienen filas en
+/// `EditorialItem`: guardar su resultado obligaría a un trabajo periódico
+/// que lo refresque, y el día que fallara la portada mostraría datos viejos
+/// sin que nadie se enterara. Calcular en la consulta es más barato que
+/// mantener sincronizada una copia.
+model EditorialSection {
+  id        String          @id @default(cuid())
+  /// Título visible ("Lo nuevo", "Los mejores álbumes").
+  title     String
+  subtitle  String?
+  /// Ruta amigable, única: /seccion/lo-nuevo
+  slug      String          @unique
+  kind      EditorialKind   @default(MANUAL)
+  layout    EditorialLayout @default(CAROUSEL)
+  /// Orden en la portada. Menor primero.
+  position  Int             @default(0)
+  /// Sin publicar, la sección existe en el panel pero no sale en los clientes.
+  isPublished Boolean       @default(false)
+  /// Cuántas piezas mostrar en las secciones automáticas.
+  maxItems  Int             @default(10)
+
+  items     EditorialItem[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([isPublished, position])
+}
+
+/// Una pieza dentro de una sección MANUAL.
+///
+/// Las tres referencias son opcionales y excluyentes en la práctica: una
+/// pieza es una pista, un álbum o un artista. No se modela con tres tablas
+/// separadas porque el orden (`position`) es común a todas y partirlo
+/// obligaría a intercalar tres listas al leer.
+model EditorialItem {
+  id        String           @id @default(cuid())
+  sectionId String
+  section   EditorialSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  position  Int              @default(0)
+
+  trackId   String?
+  track     Track?           @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  albumId   String?
+  album     Album?           @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artistId  String?
+  artist    Artist?          @relation("ArtistEditorialItems", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, position])
+}
+
+/// Solicitud de un artista para destacar una canción en la primera fila.
+///
+/// Sobre el pago: se guarda el importe calculado (`priceCents`) pero NO se
+/// cobra nada. No hay pasarela configurada, y simular un cobro dejaría la
+/// plataforma creyendo que cobró dinero que nunca entró. `paidAt` queda nulo
+/// hasta que exista una integración real; el panel lo muestra como
+/// "pendiente de cobro" en vez de dar por hecho que está pagado.
+model Promotion {
+  id            String          @id @default(cuid())
+  trackId       String
+  track         Track           @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User            @relation("PromotionRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  /// Días solicitados. La ventana real se fija al aprobar, no al pedir:
+  /// entre la solicitud y la aprobación pueden pasar días y el artista
+  /// perdería parte de lo que pidió.
+  days          Int
+  status        PromotionStatus @default(PENDING_APPROVAL)
+  /// Orden dentro de la primera fila. Menor primero.
+  position      Int             @default(0)
+
+  startsAt      DateTime?
+  endsAt        DateTime?
+
+  /// Importe calculado. Ver el comentario del modelo sobre el cobro.
+  priceCents    Int
+  paidAt        DateTime?
+
+  reviewedById    String?
+  reviewedBy      User?     @relation("PromotionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([status, position])
+  @@index([trackId])
+}
+
+/// Notificación para un usuario.
+///
+/// Se guarda en la base y no se genera en el cliente. Antes la app las
+/// inventaba a partir de su estado local, así que decían cosas que nunca
+/// habían pasado y no se enteraban de lo que sí: que un admin aprobó tu
+/// canción es un hecho del servidor, y el teléfono no tiene forma de
+/// saberlo por su cuenta.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind      NotificationKind
+  title     String
+  body      String
+
+  /// Adónde lleva al tocarla: "track", "artist", "promotion"…
+  targetType String?
+  targetId   String?
+
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+/// Denuncia de una canción hecha por un usuario desde la app o la web.
+///
+/// El denunciante se guarda (`reporterId`) para poder detectar abuso: alguien
+/// que denuncia veinte canciones de la competencia en un día es un patrón
+/// distinto de veinte personas denunciando la misma. Se pone a nulo si borra
+/// su cuenta, en vez de arrastrar la denuncia con él: la denuncia sigue
+/// siendo válida aunque la cuenta desaparezca.
+model TrackReport {
+  id         String       @id @default(cuid())
+  trackId    String
+  track      Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  reporterId String?
+  reporter   User?        @relation("TrackReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  reason     ReportReason
+  /// Explicación del usuario. Obligatoria en plagio y copyright: sin decir
+  /// de qué obra se trata, la denuncia no es accionable.
+  details    String?
+  status     ReportStatus @default(OPEN)
+
+  /// Resolución: quién la cerró, cuándo y con qué nota interna.
+  resolvedById   String?
+  resolvedBy     User?     @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  /// Un usuario no puede denunciar la misma canción dos veces: multiplicaría
+  /// el contador y haría parecer masivo lo que es una sola persona.
+  @@unique([trackId, reporterId])
+  @@index([status, createdAt])
+  @@index([trackId])
+}
+
+/// Registro inmutable de las acciones del panel.
+///
+/// Sólo se inserta: no hay ruta que actualice ni borre filas de acá. Un log
+/// de auditoría que se puede editar no sirve como auditoría.
+model AuditLog {
+  id         String   @id @default(cuid())
+  /// Quién. Se guarda además el email en texto: si la cuenta se borra, el
+  /// registro tiene que seguir diciendo quién hizo qué.
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String
+
+  /// Qué: "artist.verify", "track.approve", "track.takedown"…
+  action     String
+  /// Sobre qué objeto, y una etiqueta legible para no tener que ir a
+  /// buscarlo (puede que ya no exista).
+  targetType String
+  targetId   String?
+  targetLabel String?
+
+  /// Detalle libre de la acción (valores antes/después, motivo).
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([targetType, targetId])
+}
+
+/// Un crédito de la grabación. Modelo propio y no columnas en `Track`
+/// porque una pista tiene N créditos de M roles distintos y las regalías se
+/// reparten por fila.
+///
+/// `name` es obligatorio y `artistId` opcional a propósito: la mayoría de
+/// compositores, letristas e ingenieros no son usuarios de la plataforma, y
+/// obligarlos a existir como `Artist` llenaría el catálogo de perfiles
+/// fantasma que nadie puede reclamar. Cuando el crédito SÍ corresponde a un
+/// artista de Peyma, `artistId` lo enlaza y la app puede linkear su perfil.
+model TrackCredit {
+  id       String     @id @default(cuid())
+  trackId  String
+  track    Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  role     CreditRole
+  name     String
+  artistId String?
+  artist   Artist?    @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  /// Porcentaje de regalías de esta persona sobre la grabación (0–100).
+  /// Nulo mientras no se haya configurado el split.
+  splitPercent Float?
+
+  @@unique([trackId, role, name])
+  @@index([trackId])
+  @@index([artistId])
+}
+
+/// Una versión transcodificada y servible de una pista. El reproductor pide
+/// la mejor que su conexión y su suscripción permitan.
+model AudioVariant {
+  id          String       @id @default(cuid())
+  trackId     String
+  track       Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  quality     AudioQuality
+  /// Contenedor/códec real del archivo: "m4a", "flac", "ogg".
+  format      String
+  /// Nulo en FLAC: el bitrate de un sin pérdida depende del material.
+  bitrateKbps Int?
+  url         String
+  sizeBytes   Int
+  /// Suscripción mínima para servir ESTA variante. LOSSLESS va a PREMIUM
+  /// aunque el track sea gratuito.
+  requiredTier SubscriptionTier @default(FREE)
+  createdAt   DateTime     @default(now())
+
+  /// Una sola variante por calidad y pista: reprocesar reemplaza, no duplica.
+  @@unique([trackId, quality])
+  @@index([trackId])
+}
+
+/// Trabajo de procesamiento pesado (ffmpeg, imágenes). Vive en la base y no
+/// sólo en memoria para que el panel pueda mostrar el estado, los errores y
+/// reintentar — y para que un reinicio del servidor no pierda la cola.
+model ProcessingJob {
+  id          String    @id @default(cuid())
+  kind        JobKind
+  status      JobStatus @default(QUEUED)
+  trackId     String?
+  track       Track?    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  uploadId    String?
+  upload      TrackUpload? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  /// Parámetros del trabajo (p. ej. qué calidad transcodificar).
+  payload     Json?
+  /// Resultado resumido, para poder inspeccionar sin volver a correrlo.
+  result      Json?
+  errorMessage String?
+  attempts    Int       @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([trackId])
+  @@index([uploadId])
+}
+
+/// Resultado del análisis de ritmo/audio de una pista — 1:1 con Track.
+/// `featureVector` es lo que usa `recommendationService` para encontrar
+/// pistas "parecidas" por distancia (coseno/euclidiana) en vez de comparar
+/// campo por campo.
+model AudioAnalysis {
+  id               String      @id @default(cuid())
+  trackId          String      @unique
+  track            Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  bpm              Float
+  /// Clase de altura 0–11 (0=C, 1=C#/Db, … 11=B), igual que Spotify's Audio Features.
+  musicalKey       Int
+  mode             MusicalMode
+  /// Todas estas 0–1 salvo `loudnessDb` (dBFS, negativo).
+  energy           Float
+  danceability     Float
+  valence          Float
+  acousticness     Float
+  instrumentalness Float
+  loudnessDb       Float
+  /// Vector normalizado (bpm escalado + las 6 características 0-1) para similarity search.
+  featureVector    Float[]
+
+  /// --- Medición EBU R128 real, hecha por ffmpeg sobre el máster ---
+  /// `loudnessDb` de arriba es una estimación RMS del analizador propio;
+  /// estos dos son la medición de norma. Nulos hasta que corre el trabajo
+  /// LOUDNESS, porque el catálogo viejo nunca pasó por ffmpeg.
+  /// Loudness integrado en LUFS (negativo; objetivo de la plataforma: -14).
+  integratedLufs   Float?
+  /// Pico real en dBTP (negativo; techo de la plataforma: -1).
+  truePeakDb       Float?
+  /// Ganancia en dB que hay que aplicar para llegar al objetivo. Se guarda en
+  /// vez de reescribir el archivo: así el máster queda intacto y cambiar el
+  /// objetivo de la plataforma no obliga a retranscodificar todo el catálogo.
+  gainDb           Float?
+
+  /// Picos de amplitud 0–1 para dibujar la barra de onda (ver
+  /// services/waveform.ts). Array plano de ~200 puntos: cabe en la misma
+  /// fila y evita una tabla aparte o un archivo JSON suelto por pista.
+  waveformPeaks    Float[]
+  /// Qué versión del analizador lo generó — permite reanalizar en bloque si el algoritmo cambia.
+  analyzerVersion  String
+  analyzedAt       DateTime    @default(now())
+
+  @@index([bpm])
+  @@index([musicalKey])
+}
+
+/// Letra de una pista — modelo aparte (no columnas en Track) para que listar
+/// canciones no arrastre bloques de texto grandes en cada fila.
+model Lyrics {
+  id        String   @id @default(cuid())
+  trackId   String   @unique
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  plainText String?
+  /// Letra sincronizada estilo LRC: `[{ "timeMs": number, "text": string }, …]`.
+  synced    Json?
+  language  String   @default("es")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// El objeto que vive el pipeline de subida de principio a fin: se crea en
+/// borrador, junta archivos y letra, dispara el análisis, y sólo al
+/// confirmar el creador se materializa en un `Track` real + `AudioAnalysis`
+/// + `Lyrics`. Mientras tanto nada de esto es visible en el catálogo.
+model TrackUpload {
+  id                String       @id @default(cuid())
+  status            UploadStatus @default(DRAFT)
+  errorMessage      String?
+
+  uploadedById      String
+  uploadedBy        User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  artistId          String
+  artist            Artist       @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  /// Si el creador no elige álbum, se publica como sencillo (álbum de una sola pista, creado al publicar).
+  albumId           String?
+  album             Album?       @relation(fields: [albumId], references: [id])
+
+  title             String?
+  coverUrl          String?
+  audioUrl          String?
+  durationSeconds   Int?
+
+  lyricsPlainDraft  String?
+  lyricsSyncedDraft Json?
+
+  /// Snapshot del `AudioAnalysisResult` mientras está en borrador — se copia
+  /// a `AudioAnalysis` recién al publicar, así el creador puede corregir
+  /// género/mood antes de que quede fijo.
+  analysisDraft     Json?
+  genreOverride     Genre?
+  moodOverride      String?
+
+  publishedTrackId  String?      @unique
+  publishedTrack    Track?       @relation(fields: [publishedTrackId], references: [id])
+
+  /// Máster sin pérdida subido directo a S3/R2 con URL firmada — el archivo
+  /// nunca pasa por el proceso de la API (ver services/storage.ts).
+  masterUrl         String?
+  /// Clave del objeto en el bucket mientras la subida está en curso. Se
+  /// guarda al firmar la URL para poder verificar después que el archivo
+  /// llegó de verdad: el cliente sube directo y podría no avisar nunca.
+  masterObjectKey   String?
+
+  /// Trabajos de procesamiento disparados por esta subida.
+  jobs              ProcessingJob[]
+
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([uploadedById, status])
+}
+
+model Playlist {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  coverUrl    String?
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId     String
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tracks      PlaylistTrack[]
+
+  /// Retirada por moderación: desaparece del catálogo público pero su dueño
+  /// la conserva.
+  ///
+  /// Existe aparte de borrarla porque no es lo mismo: una playlist con un
+  /// título ofensivo o una portada inadecuada se puede bloquear y revisar,
+  /// y si la reclamación era infundada se restaura con un clic. Borrarla se
+  /// lleva por delante el trabajo de curación de una persona y no tiene
+  /// vuelta atrás.
+  isBlocked     Boolean   @default(false)
+  blockedReason String?
+  blockedAt     DateTime?
+
+  /// `true` para las playlists que arma `recommendationService`, no el usuario.
+  isAutoGenerated    Boolean                @default(false)
+  generatorType      PlaylistGeneratorType?
+  /// Redundante con `ownerId` a propósito: identifica quién la generó incluso
+  /// si en el futuro estas playlists pasaran a tener un owner de sistema distinto.
+  seedUserId         String?
+  /// Parámetros con los que se generó (género semilla, trackId semilla, fecha) —
+  /// para depurar por qué salió lo que salió, sin tener que adivinar.
+  generationCriteria Json?
+
+  @@index([ownerId])
+  @@index([isAutoGenerated, seedUserId])
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  position   Int
+  addedAt    DateTime @default(now())
+
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  trackId    String
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+  @@index([playlistId, position])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId   String
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([userId])
+}
+
+model RecentlyPlayed {
+  id       String   @id @default(cuid())
+  playedAt DateTime @default(now())
+
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId  String
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  // Una fila por (usuario, canción): repetir una canción actualiza playedAt
+  // en vez de acumular duplicados sin límite en la tabla.
+  @@unique([userId, trackId])
+  @@index([userId, playedAt])
+}
+
+/// Un usuario siguiendo a un artista (perfil de artista al estilo Spotify).
+/// Métrica persistente/acumulativa: no vence, no depende de una ventana de
+/// tiempo — contraste directo con StreamLog más abajo.
+model Follow {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation("UserFollowsArtists", fields: [userId], references: [id], onDelete: Cascade)
+  artistId  String
+  artist    Artist   @relation("ArtistFollowers", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, artistId])
+  @@index([artistId])
+}
+
+/// Un evento de reproducción, uno por cada vez que suena una pista — a
+/// propósito NO tiene un `@@unique([userId, trackId])` como `RecentlyPlayed`:
+/// esa tabla guarda "la última vez que X escuchó Y" (1 fila por par),
+/// mientras que esta guarda CADA reproducción, porque "oyentes mensuales" es
+/// un COUNT(DISTINCT userId) sobre una ventana rodante de 28 días
+/// (ver services/artistStats.ts) y esa cuenta se rompe si se pisan filas.
+/// `artistId` va denormalizado (no sólo por `track.artistId`) para poder
+/// filtrar/agrupar por artista sin un JOIN contra Track en la query caliente.
+model StreamLog {
+  id       String   @id @default(cuid())
+  playedAt DateTime @default(now())
+
+  /// Ubicación APROXIMADA de la escucha, sólo si el usuario dio permiso.
+  ///
+  /// Redondeada a 1 decimal (~11 km) a propósito: sirve para pintar un mapa
+  /// de densidad por zona y no permite ubicar a nadie en su casa. Guardar
+  /// la coordenada exacta daría un historial de movimientos de cada
+  /// usuario, que es un dato que esta plataforma no necesita.
+  latitude      Float?
+  longitude     Float?
+
+  /// Segundos realmente escuchados de la pista.
+  ///
+  /// Nulo en los eventos anteriores a que esto existiera. Importa la
+  /// diferencia: sin este dato, "horas escuchadas" sólo se puede estimar
+  /// multiplicando reproducciones por la duración completa, lo que asume
+  /// que nadie salta nunca una canción y siempre infla la cifra. Las
+  /// consultas usan este valor cuando está y caen a la estimación cuando no,
+  /// diciendo cuál de las dos cosas es.
+  secondsPlayed Int?
+
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId  String
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  artistId String
+  artist   Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([artistId, playedAt])
+  @@index([userId, playedAt])
+  @@index([playedAt])
+}
+
+/// Cada búsqueda que hace un usuario. Alimenta "qué se busca más" del panel.
+///
+/// Se guarda el texto NORMALIZADO además del original: sin eso, "Bloque Sur",
+/// "bloque sur" y "BLOQUE  SUR" serían tres términos distintos en el ranking
+/// y ninguno destacaría.
+model SearchLog {
+  id         String   @id @default(cuid())
+  /// Lo que escribió el usuario, tal cual.
+  query      String
+  /// Minúsculas, sin acentos y con espacios colapsados — la clave de agrupación.
+  normalized String
+  /// Cuántos resultados devolvió. Un término muy buscado con 0 resultados es
+  /// justamente lo más valioso: es catálogo que falta.
+  resultCount Int
+  userId     String?
+  user       User?    @relation("UserSearches", fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([normalized, createdAt])
+  @@index([createdAt])
+}
+
+/// En qué punto falló un alta de cuenta.
+enum SignupStage {
+  VALIDATION // el formulario no pasó las reglas (correo mal formado, contraseña corta)
+  DUPLICATE_EMAIL // ya existe una cuenta con ese correo
+  GOOGLE_OAUTH // falló el intercambio con Google
+  SERVER_ERROR // se cayó algo del lado nuestro
+}
+
+/// Intento de registro que NO terminó en cuenta creada.
+///
+/// Es la única forma de responder "cuántas cuentas fallaron y en qué parte":
+/// si el alta falla no queda ningún `User`, así que sin esta tabla el fallo
+/// es invisible y parece que simplemente nadie se registró.
+model SignupAttempt {
+  id        String      @id @default(cuid())
+  /// Puede ser nulo si el fallo fue antes de poder leer un correo válido.
+  email     String?
+  stage     SignupStage
+  /// Mensaje corto y sin datos sensibles — nunca la contraseña.
+  reason    String
+  ipAddress String?
+  createdAt DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([stage])
+}
+
+/// Ritmo musical editable desde el panel.
+///
+/// Convive con el enum `Genre` de Postgres, que NO se puede ampliar sin una
+/// migración y por eso se queda como está para el catálogo existente. Esta
+/// tabla es el vocabulario abierto: alimenta `Artist.genres` (texto libre),
+/// el comando de búsqueda `genre:` y las tarjetas de Buscar. Así se pueden
+/// añadir Drill, Amapiano o Corridos Tumbados sin desplegar.
+model MusicGenre {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  /// Color de la tarjeta en la pestaña Buscar (#RRGGBB).
+  color     String   @default("#1f6feb")
+  /// Desactivar en vez de borrar: un ritmo retirado deja de ofrecerse pero
+  /// los artistas que ya lo tenían asignado no pierden el dato.
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+/// Ajustes de la plataforma, editables desde el panel sin desplegar.
+///
+/// Clave-valor y no columnas de una fila única: añadir un ajuste nuevo no
+/// debería requerir una migración. El valor va como texto y cada lector lo
+/// interpreta; `settingsService` centraliza esa conversión para que no se
+/// haga a mano en cada sitio.
+model AppSetting {
+  key         String   @id
+  value       String
+  /// Para qué sirve — se muestra en la pantalla de Ajustes.
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+}

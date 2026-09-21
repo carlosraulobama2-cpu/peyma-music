@@ -1,0 +1,22 @@
+# Postgres local para desarrollo. Levantar con: docker compose up -d
+# Coincide con el DATABASE_URL de .env.example.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: peyma
+      POSTGRES_PASSWORD: peyma
+      POSTGRES_DB: peyma_music
+    ports:
+      - '5432:5432'
+    volumes:
+      - peyma_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U peyma -d peyma_music']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  peyma_postgres_data:

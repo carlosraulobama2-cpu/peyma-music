@@ -1,0 +1,178 @@
+/**
+ * Peyma Music API — Portada (Home Feed)
+ *
+ * UNA sola llamada devuelve todo lo que pinta la pantalla de Inicio: fila
+ * VIP, accesos rápidos, escuchado recientemente, tendencias, novedades,
+ * recomendaciones y las secciones editoriales.
+ *
+ * Por qué agregado y no un endpoint por fila: la web hacía cinco peticiones
+ * en paralelo al abrir Inicio y la app otras tantas. Cada una con su propia
+ * latencia, su propio estado de carga y su propio manejo de error, y las dos
+ * plataformas decidiendo por separado qué pedir — que es exactamente cómo
+ * acaban mostrando cosas distintas. Con un único endpoint, la composición de
+ * la portada se decide en un solo sitio.
+ *
+ * Las consultas de dentro SÍ van en paralelo (`Promise.all`): son
+ * independientes y serializarlas sumaría sus latencias.
+ */
+import { Router, type Response } from 'express';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../prismaClient';
+import { optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
+import { getActivePromotions } from '../services/promotions';
+import { getPublishedSections } from '../services/editorial';
+import { getTrendingTracks } from '../services/audienceStats';
+
+const router = Router();
+
+/** Cuántas piezas lleva cada fila. Más no caben en pantalla sin desplazar mucho. */
+const ROW_SIZE = 12;
+/** La cuadrícula de accesos rápidos es 2×4. */
+const QUICK_ACCESS_SIZE = 8;
+
+const CARD_TRACK_SELECT = {
+  id: true,
+  title: true,
+  coverUrl: true,
+  duration: true,
+  genre: true,
+  isExplicit: true,
+  dominantColor: true,
+  artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
+  album: { select: { id: true, title: true } },
+} satisfies Prisma.TrackSelect;
+
+/** Filtro público, el mismo en toda la portada. */
+const PUBLIC_WHERE: Prisma.TrackWhereInput = {
+  status: 'APPROVED',
+  isBlocked: false,
+  artist: { isBlocked: false },
+};
+
+router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id ?? null;
+
+  const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, topArtists] = await Promise.all([
+    getActivePromotions(),
+    getPublishedSections(),
+    getTrendingTracks(ROW_SIZE, 28),
+    prisma.track.findMany({
+      where: PUBLIC_WHERE,
+      orderBy: { createdAt: 'desc' },
+      take: ROW_SIZE,
+      select: CARD_TRACK_SELECT,
+    }),
+    // "Escuchado recientemente" sólo existe si hay sesión. Sin usuario se
+    // devuelve vacío en vez de inventar un historial genérico.
+    userId
+      ? prisma.recentlyPlayed.findMany({
+          where: { userId, track: PUBLIC_WHERE },
+          orderBy: { playedAt: 'desc' },
+          take: ROW_SIZE,
+          select: { track: { select: CARD_TRACK_SELECT } },
+        })
+      : [],
+    userId
+      ? prisma.playlist.findMany({
+          // Las retiradas por moderación no llenan la cuadrícula.
+          where: { ownerId: userId, isBlocked: false },
+          orderBy: { updatedAt: 'desc' },
+          take: QUICK_ACCESS_SIZE,
+          select: { id: true, title: true, coverUrl: true, _count: { select: { tracks: true } } },
+        })
+      : [],
+    /**
+     * Artistas populares, para la fila de avatares redondos.
+     *
+     * Se ordenan por OYENTES distintos en la ventana, no por número de
+     * reproducciones: si no, un solo usuario dejando una canción en bucle
+     * pondría a su artista favorito arriba del todo.
+     */
+    prisma.$queryRaw<{ id: string; name: string; imageUrl: string; isVerified: boolean; listeners: bigint }[]>`
+      SELECT a."id", a."name", a."imageUrl", a."isVerified",
+             COUNT(DISTINCT s."userId") AS listeners
+        FROM "Artist" a
+        LEFT JOIN "StreamLog" s
+               ON s."artistId" = a."id"
+              AND s."playedAt" >= NOW() - INTERVAL '28 days'
+       WHERE a."isBlocked" = false
+       GROUP BY a."id", a."name", a."imageUrl", a."isVerified"
+       ORDER BY listeners DESC, a."name" ASC
+       LIMIT 12
+    `,
+  ]);
+
+  const recentlyPlayed = recentRows.map((row) => row.track);
+
+  /**
+   * Accesos rápidos: las playlists del usuario y, si no llena los 8 huecos,
+   * se completa con lo que escuchó hace poco.
+   *
+   * La cuadrícula es de tamaño fijo (2×4) y dejar huecos vacíos se ve como
+   * un error de carga. Completarla con historial real es mejor que mostrar
+   * cuatro tarjetas y cuatro agujeros.
+   */
+  const quickAccess = [
+    ...quickAccessPlaylists.map((playlist) => ({
+      kind: 'playlist' as const,
+      id: playlist.id,
+      title: playlist.title,
+      coverUrl: playlist.coverUrl,
+      subtitle: `${playlist._count.tracks} canción(es)`,
+    })),
+    ...recentlyPlayed.map((track) => ({
+      kind: 'track' as const,
+      id: track.id,
+      title: track.title,
+      coverUrl: track.coverUrl,
+      subtitle: track.artist.name,
+    })),
+  ].slice(0, QUICK_ACCESS_SIZE);
+
+  res.json({
+    /** Fila VIP: contenido promocionado desde el panel. */
+    hero: promotions,
+    quickAccess,
+    rows: [
+      { key: 'recent', title: 'Escuchado recientemente', tracks: recentlyPlayed },
+      {
+        key: 'trending',
+        title: 'Tendencias en los últimos 28 días',
+        // `getTrendingTracks` devuelve su propia forma; se adapta aquí para
+        // que TODAS las filas tengan la misma, y el cliente pinte una sola
+        // tarjeta en vez de una por tipo de fila.
+        tracks: trending.map((row) => ({
+          id: row.trackId,
+          title: row.title,
+          coverUrl: row.coverUrl,
+          duration: row.duration,
+          genre: row.genre,
+          isExplicit: false,
+          dominantColor: null,
+          artist: { id: row.artistId, name: row.artistName, imageUrl: row.artistImageUrl, isVerified: row.isVerified },
+          album: null,
+          playCount: row.streams,
+        })),
+      },
+      { key: 'new', title: 'Novedades de la semana', tracks: newReleases },
+    ].filter((row) => row.tracks.length > 0),
+    /**
+     * Artistas populares. Se envían aunque no tengan reproducciones
+     * (LEFT JOIN): en un catálogo nuevo, una fila vacía se vería como un
+     * error, y mostrar los artistas que hay es más útil que no mostrar nada.
+     */
+    artists: topArtists.map((row) => ({
+      id: row.id,
+      name: row.name,
+      imageUrl: row.imageUrl,
+      isVerified: row.isVerified,
+      listeners: Number(row.listeners),
+    })),
+    /** Secciones que definió el curador en el panel. */
+    sections,
+    /** Para que el cliente sepa cuánto puede reutilizar esta respuesta. */
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+export default router;

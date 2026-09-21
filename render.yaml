@@ -1,0 +1,164 @@
+# Peyma Music — Blueprint de Render
+#
+# Describe los cuatro servicios de la plataforma. Render lo lee con
+# "New > Blueprint" apuntando a este repositorio, y a partir de ahí cada
+# push despliega lo que haya cambiado.
+#
+# Los secretos NO están aquí a propósito: todo lo marcado `sync: false` se
+# rellena una vez en el panel de Render y no se vuelve a tocar. Este archivo
+# sí se sube al repositorio, así que cualquier valor escrito en él quedaría
+# en el historial de git para siempre.
+#
+# Qué NO cubre este blueprint:
+#  - La base de datos. Vive en Neon, fuera de Render, y se conecta por URL.
+#  - El bucket. Vive en Cloudflare R2. Ver backend/.env.example.
+
+services:
+  # ---------------------------------------------------------------------
+  # API
+  # ---------------------------------------------------------------------
+  - type: web
+    name: peyma-api
+    runtime: node
+    rootDir: backend
+    plan: starter
+    # `prisma migrate deploy` va en el build, no en el arranque: si una
+    # migración falla, el despliegue se marca fallido y Render mantiene la
+    # versión anterior sirviendo. Puesto en el arranque, el contenedor
+    # entraría en un ciclo de reinicios con la API caída.
+    buildCommand: npm install && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Conexión de runtime: el endpoint CON pooler de Neon (lleva "-pooler"
+      # en el host). Es el correcto para una API con muchas conexiones cortas.
+      - key: DATABASE_URL
+        sync: false
+      # Conexión DIRECTA, sin pooler. Sólo la usa `prisma migrate deploy` del
+      # buildCommand: los advisory locks de Prisma son de SESIÓN y a través de
+      # un pooler de transacciones cada sentencia puede caer en un backend
+      # distinto, así que la migración esperaría para siempre un lock que
+      # nunca va a poder adquirir. Es la misma URL que DATABASE_URL quitando
+      # "-pooler" del host.
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Orígenes permitidos, separados por coma. La API se NIEGA a arrancar
+      # en producción si esto queda vacío (ver src/index.ts): con
+      # `credentials: true`, aceptar cualquier origen dejaría que cualquier
+      # web hiciera peticiones autenticadas con la sesión del visitante.
+      - key: CORS_ORIGINS
+        sync: false
+      # El worker vive en su propio servicio (peyma-worker, más abajo), así
+      # que aquí se apaga para que ffmpeg no compita con las peticiones HTTP.
+      - key: WORKER_IN_PROCESS
+        value: "false"
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # OJO con la jurisdicción: en R2 dos buckets pueden llamarse igual en
+      # jurisdicciones distintas. Si la URL pública lleva ".eu.", el endpoint
+      # también. Ver backend/.env.example.
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+  # ---------------------------------------------------------------------
+  # Worker de audio (waveform, loudness, transcodificación, color)
+  # ---------------------------------------------------------------------
+  #
+  # Servicio aparte y no un hilo de la API porque ffmpeg consume CPU y
+  # memoria de forma sostenida: dentro del proceso web, un máster largo puede
+  # agotar la memoria de la instancia y tumbar también la API. Separados,
+  # como mucho se cae el procesamiento y la gente sigue escuchando.
+  #
+  # Comparte la cola con la API a través de Postgres (`FOR UPDATE SKIP
+  # LOCKED`), así que no hay nada que sincronizar entre los dos.
+  - type: worker
+    name: peyma-worker
+    runtime: node
+    rootDir: backend
+    plan: starter
+    # Aquí NO se migra: lo hace peyma-api. Dos servicios corriendo
+    # `migrate deploy` a la vez compiten por el mismo advisory lock.
+    buildCommand: npm install && npm run build
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      # El worker escribe las variantes transcodificadas en el MISMO bucket
+      # que la API. Si estas credenciales no coinciden, la API guardaría URLs
+      # que apuntan a objetos que el worker dejó en otro sitio.
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+
+  # ---------------------------------------------------------------------
+  # Web pública (Next.js)
+  # ---------------------------------------------------------------------
+  - type: web
+    name: peyma-web
+    runtime: node
+    rootDir: web
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Las NEXT_PUBLIC_* se incrustan en el JavaScript del navegador durante
+      # el build, así que tienen que estar definidas ANTES de compilar y no
+      # pueden contener nada secreto: acaban visibles en el código del cliente.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+        sync: false
+      - key: NEXT_PUBLIC_ADMIN_URL
+        sync: false
+
+  # ---------------------------------------------------------------------
+  # Panel de administración (Vite → estático)
+  # ---------------------------------------------------------------------
+  - type: web
+    name: peyma-admin
+    runtime: static
+    rootDir: admin
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Igual que arriba: Vite sustituye las VITE_* en tiempo de build.
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # React Router sirve todas las rutas desde un único index.html. Sin
+      # esto, recargar en /dashboard devolvería 404 porque no existe ese
+      # archivo: sólo existe la ruta del lado del cliente.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY

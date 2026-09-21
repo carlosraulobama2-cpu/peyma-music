@@ -1,0 +1,63 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "types": [
+      "jest"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    // React Native 0.87 resuelve por defecto a `types_generated/`, sus tipos
+    // traducidos desde Flow automáticamente. En esta versión están rotos:
+    // hasta `<Text style={{ color: '#fff' }}>` falla porque `color` se pierde
+    // al resolver las cadenas de `Omit<A & B & C>` que genera el traductor.
+    // Eso son ~300 errores de tipos que no corresponden a ningún fallo real.
+    //
+    // La condición `react-native-legacy-deep-imports` apunta al `types/` que
+    // React Native sigue publicando, escrito a mano. `react-native` va después
+    // porque es la que pone `expo/tsconfig.base` y `customConditions` no se
+    // hereda, se reemplaza: si no la repetimos acá, se pierde.
+    //
+    // Sólo afecta al chequeo de tipos. Metro no usa este archivo, así que la
+    // app se compila y se ejecuta igual. Revisar al subir de versión RN.
+    "customConditions": [
+      "react-native-legacy-deep-imports",
+      "react-native"
+    ]
+  },
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "backend",
+    "docs",
+    "scripts"
+  ],
+  "extends": "expo/tsconfig.base"
+}
