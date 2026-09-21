@@ -21,7 +21,7 @@ import { prisma } from '../prismaClient';
 import { optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
 import { getActivePromotions } from '../services/promotions';
 import { getPublishedSections } from '../services/editorial';
-import { getTrendingTracks } from '../services/audienceStats';
+import { getTrendingTracks, getPlayCounts } from '../services/audienceStats';
 
 const router = Router();
 
@@ -105,6 +105,26 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
   const recentlyPlayed = recentRows.map((row) => row.track);
 
   /**
+   * Reproducciones de todas las pistas de la portada.
+   *
+   * Antes sólo las traía la fila de tendencias, porque ahí venían incluidas
+   * en la propia consulta de tendencias. El resultado era que en la portada
+   * casi ninguna tarjeta mostraba su contador: la fila de novedades y la de
+   * escuchado recientemente llegaban sin el dato y el cliente, que compara
+   * con `undefined` para poder enseñar un 0 legítimo, no pintaba nada.
+   *
+   * Se resuelve en UNA consulta para todas las pistas juntas, no una por
+   * fila: son los mismos identificadores repetidos entre filas y agruparlos
+   * evita tanto el problema N+1 como contar dos veces.
+   */
+  const cardIds = [...new Set([...newReleases, ...recentlyPlayed].map((track) => track.id))];
+  const cardPlayCounts = await getPlayCounts(cardIds);
+  const withPlays = <T extends { id: string }>(track: T) => ({
+    ...track,
+    playCount: cardPlayCounts.get(track.id) ?? 0,
+  });
+
+  /**
    * Accesos rápidos: las playlists del usuario y, si no llena los 8 huecos,
    * se completa con lo que escuchó hace poco.
    *
@@ -134,7 +154,7 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
     hero: promotions,
     quickAccess,
     rows: [
-      { key: 'recent', title: 'Escuchado recientemente', tracks: recentlyPlayed },
+      { key: 'recent', title: 'Escuchado recientemente', tracks: recentlyPlayed.map(withPlays) },
       {
         key: 'trending',
         title: 'Tendencias en los últimos 28 días',
@@ -154,7 +174,7 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
           playCount: row.streams,
         })),
       },
-      { key: 'new', title: 'Novedades de la semana', tracks: newReleases },
+      { key: 'new', title: 'Novedades de la semana', tracks: newReleases.map(withPlays) },
     ].filter((row) => row.tracks.length > 0),
     /**
      * Artistas populares. Se envían aunque no tengan reproducciones

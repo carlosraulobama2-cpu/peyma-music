@@ -63,7 +63,7 @@ function TrackRow({ track, index, numbered, isCurrent, onPlay, onRemove, onConte
       onContextMenu={onContextMenu}
       // `contain: content` aísla el reflow de cada fila del resto de la lista.
       style={{ contain: "content" }}
-      className="group grid h-14 grid-cols-[2rem_1fr_auto_auto] items-center gap-4 rounded px-3 transition-all duration-300 ease-in-out hover:bg-white/10"
+      className="group grid h-14 grid-cols-[2rem_1fr_auto_auto_auto] items-center gap-4 rounded px-3 transition-all duration-300 ease-in-out hover:bg-white/10"
     >
       {numbered ? (
         <span className={`text-center text-sm ${isCurrent ? "text-brand" : "text-muted"}`}>{index + 1}</span>
@@ -95,14 +95,23 @@ function TrackRow({ track, index, numbered, isCurrent, onPlay, onRemove, onConte
           )}
           {/* Ritmo de la canción, cuando el catálogo lo tiene. */}
           {track.genre && <span className="hidden shrink-0 sm:inline">· {track.genre}</span>}
-          {/* Reproducciones, al estilo de Spotify. Se compara con undefined y
-              no por valor falsy: una canción con 0 debe enseñar el 0, que es
-              un dato, en vez de desaparecer como si no se supiera. */}
-          {track.playCount !== undefined && (
-            <span className="hidden shrink-0 md:inline">· {formatPlayCount(track.playCount)}</span>
-          )}
         </span>
       </div>
+
+      {/* Reproducciones en columna propia y alineadas a la derecha, como en
+          Spotify. Antes vivían dentro del subtítulo con `hidden md:inline`:
+          competían por espacio con el nombre del artista y el ritmo, y por
+          debajo de 768 px no se veían en absoluto.
+
+          Se compara con undefined y no por valor falsy: una canción con 0
+          debe enseñar el 0, que es un dato, en vez de desaparecer como si
+          no se supiera. `tabular-nums` alinea las cifras entre filas. */}
+      <span
+        className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-muted sm:block"
+        title={track.playCount !== undefined ? `${track.playCount} reproducciones` : undefined}
+      >
+        {track.playCount !== undefined ? formatPlayCount(track.playCount) : ""}
+      </span>
 
       <LikeButton trackId={track.id} />
 
