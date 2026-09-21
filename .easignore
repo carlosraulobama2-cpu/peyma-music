@@ -1,0 +1,36 @@
+# Qué NO se sube a EAS Build.
+#
+# Este repositorio es un monorepo: la app de Expo vive en la raíz, pero al
+# lado están el backend, la web y el panel. EAS empaqueta el directorio
+# entero, así que sin este archivo se suben los tres proyectos que no tienen
+# nada que ver con compilar la app — la primera build subió 314 MB.
+#
+# Funciona como un .gitignore y, cuando existe, SUSTITUYE al .gitignore para
+# decidir qué se empaqueta (no se suman). Por eso aquí se repiten las
+# exclusiones básicas.
+
+# Los otros proyectos del monorepo.
+backend/
+web/
+admin/
+
+# Dependencias y salidas de compilación: EAS instala las suyas en el servidor.
+node_modules/
+dist/
+.expo/
+web-build/
+
+# Entornos y secretos. Nunca deben salir de esta máquina.
+.env
+.env.*
+!.env.example
+
+# Control de versiones e historial.
+.git/
+
+# Archivos subidos en desarrollo.
+uploads/
+
+# Artefactos nativos: se regeneran con prebuild en el servidor.
+android/
+ios/

@@ -31,7 +31,8 @@
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.WAKE_LOCK",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -68,7 +69,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "http://localhost:3000/api"
-    }
+      "apiUrl": "http://localhost:3000/api",
+      "router": {},
+      "eas": {
+        "projectId": "69b3887e-4cab-4937-92ad-a0377ba4340b"
+      }
+    },
+    "owner": "carlosbaxx"
   }
 }
