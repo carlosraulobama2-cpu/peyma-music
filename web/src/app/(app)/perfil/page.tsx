@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "../../../lib/AuthProvider";
 import { http } from "../../../lib/httpClient";
 import { CoverImage } from "../../../components/CoverImage";
 import { uploadAvatar } from "../../../lib/avatarUpload";
+import { TERMS, PRIVACY, TERMS_UPDATED_LABEL } from "../../../lib/legal";
 
 /**
  * Perfil y ajustes del usuario.
@@ -265,6 +267,51 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
+
+      {/*
+        Los documentos legales estaban enlazados sólo desde la portada pública
+        y desde el registro, así que una vez dentro de la cuenta no había
+        forma de volver a leerlos. Justo al revés de lo que hace falta: se
+        aceptan una vez, pero se consultan después — cuando surge la duda de
+        qué se aceptó. La app móvil ya los tenía en su pantalla de perfil.
+      */}
+      <section className="mt-10 max-w-2xl">
+        <h2 className="text-lg font-bold">Legal</h2>
+        <p className="mt-1 text-sm text-muted">
+          Aceptaste estos documentos al crear tu cuenta. Aquí los tenés siempre disponibles.
+        </p>
+
+        <ul className="mt-4 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10">
+          {LEGAL_LINKS.map(({ slug, title, description }) => (
+            <li key={slug}>
+              <Link
+                href={`/legal/${slug}`}
+                className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-white/5"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{title}</span>
+                  <span className="block truncate text-xs text-muted">{description}</span>
+                </span>
+                <span aria-hidden className="shrink-0 text-muted">
+                  ›
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-3 text-xs text-muted">Última actualización: {TERMS_UPDATED_LABEL}.</p>
+      </section>
     </main>
   );
 }
+
+/**
+ * Se listan desde los documentos reales y no a mano: así, si se añade uno
+ * nuevo en `lib/legal.ts`, aparece aquí sin tener que acordarse de tocar
+ * esta pantalla.
+ */
+const LEGAL_LINKS = [
+  { slug: TERMS.slug, title: TERMS.title, description: "Qué podés hacer en Peyma Music y qué esperamos de vos." },
+  { slug: PRIVACY.slug, title: PRIVACY.title, description: "Qué datos guardamos, para qué, y cómo pedir que los borremos." },
+] as const;
