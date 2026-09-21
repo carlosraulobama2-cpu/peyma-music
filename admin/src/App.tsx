@@ -13,6 +13,7 @@ import { UsersPage } from './pages/UsersPage';
 import { TrendingPage } from './pages/TrendingPage';
 import { AudiencePage } from './pages/AudiencePage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
+import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
 import { GenresPage } from './pages/GenresPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -34,6 +35,7 @@ const PROTECTED_ROUTES = [
   { path: '/audience', element: <AudiencePage /> },
   { path: '/editorial', element: <EditorialPage /> },
   { path: '/playlists', element: <PlaylistsPage /> },
+  { path: '/playlists/:id', element: <PlaylistDetailPage /> },
   { path: '/genres', element: <GenresPage /> },
   { path: '/users', element: <UsersPage /> },
   { path: '/upload', element: <UploadPage /> },

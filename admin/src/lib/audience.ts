@@ -159,3 +159,34 @@ export interface AppSetting {
 export const fetchSettings = () => http.get<{ settings: AppSetting[] }>('/admin/settings');
 export const updateSetting = (key: string, value: string) =>
   http.patch<{ settings: AppSetting[] }>('/admin/settings', { key, value });
+
+export interface AdminPlaylistTrack {
+  id: string;
+  position: number;
+  title: string;
+  coverUrl: string;
+  duration: number;
+  genre: string | null;
+  status: string;
+  isBlocked: boolean;
+  playCount: number;
+  artist: { id: string; name: string };
+}
+
+export interface AdminPlaylistDetail {
+  playlist: AdminPlaylist;
+  totalTracks: number;
+  /**
+   * Suma de las reproducciones de las canciones de la lista.
+   *
+   * Cuenta TODAS las escuchas de cada pista en la plataforma, no sólo las
+   * que se lanzaron desde esta playlist: `StreamLog` guarda qué sonó y
+   * quién la puso, no desde qué pantalla. Sirve para pesar el repertorio
+   * que alguien reunió, no para atribuirle escuchas a la lista.
+   */
+  totalPlays: number;
+  totalSeconds: number;
+  tracks: AdminPlaylistTrack[];
+}
+
+export const fetchPlaylistDetail = (id: string) => http.get<AdminPlaylistDetail>(`/admin/playlists/${id}`);
