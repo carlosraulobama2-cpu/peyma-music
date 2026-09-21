@@ -19,7 +19,10 @@ module.exports = defineConfig([
     // `.expo/` lo genera Metro en cada arranque (los tipos de las rutas de
     // Expo Router). Analizarlo sólo produce avisos sobre código que nadie
     // escribió y que se reescribe solo al siguiente `expo start`.
-    ignores: ['**/dist/**', 'web/**', 'admin/**', '.expo/**'],
+    // `.kilo/worktrees` son copias completas del repositorio que crea otra
+    // herramienta. Analizarlas duplica todo el trabajo y, peor, hace que el
+    // resolvedor de imports reviente al encontrarse dos árboles idénticos.
+    ignores: ['**/dist/**', 'web/**', 'admin/**', '.expo/**', '.kilo/**'],
   },
   {
     // Scripts de build (p. ej. generate-assets.js) corren en Node, no en
