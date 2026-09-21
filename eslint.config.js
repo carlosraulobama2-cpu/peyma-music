@@ -22,7 +22,7 @@ module.exports = defineConfig([
     // `.kilo/worktrees` son copias completas del repositorio que crea otra
     // herramienta. Analizarlas duplica todo el trabajo y, peor, hace que el
     // resolvedor de imports reviente al encontrarse dos árboles idénticos.
-    ignores: ['**/dist/**', 'web/**', 'admin/**', '.expo/**', '.kilo/**'],
+    ignores: ['**/dist/**', 'backend/**', 'web/**', 'admin/**', '.expo/**', '.kilo/**'],
   },
   {
     // Scripts de build (p. ej. generate-assets.js) corren en Node, no en
