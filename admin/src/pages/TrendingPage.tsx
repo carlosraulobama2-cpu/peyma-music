@@ -6,6 +6,11 @@ import { CoverImage } from '../components/CoverImage';
 import { fetchTrending, formatHours, type TrendingRow } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
 
+/** Miles con separador, igual que en el Tablero: 48.210, no 48210. */
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('es').format(value);
+}
+
 /** Duración de una pista como m:ss. */
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -133,11 +138,11 @@ export function TrendingPage() {
               </div>
               <div className="flex gap-6 text-right">
                 <div>
-                  <p className="text-2xl font-bold tabular-nums">{data.top1.streams}</p>
+                  <p className="text-2xl font-bold tabular-nums">{formatNumber(data.top1.streams)}</p>
                   <p className="text-xs text-muted">reproducciones</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold tabular-nums">{data.top1.listeners}</p>
+                  <p className="text-2xl font-bold tabular-nums">{formatNumber(data.top1.listeners)}</p>
                   <p className="text-xs text-muted">oyentes</p>
                 </div>
                 <div>
@@ -169,12 +174,17 @@ export function TrendingPage() {
                     {track.isVerified && <BadgeCheck size={12} className="shrink-0 text-sky-400" aria-label="Verificado" />}
                   </p>
                 </div>
+                {/* Cada dato con su ancho: "Pop" y "Folclore" no miden lo
+                    mismo, así que sin esto el género, el BPM y la duración
+                    caían en una x distinta en cada fila. */}
                 <span className="hidden shrink-0 gap-2 font-mono text-[11px] text-muted sm:flex">
-                  {track.genre && <span>{track.genre}</span>}
-                  {track.bpm !== null && <span>{track.bpm} BPM</span>}
-                  <span>{formatDuration(track.duration)}</span>
+                  <span className="w-20 text-right">{track.genre ?? ''}</span>
+                  <span className="w-16 text-right">{track.bpm !== null ? `${track.bpm} BPM` : ''}</span>
+                  <span className="w-10 text-right">{formatDuration(track.duration)}</span>
                 </span>
-                <span className="w-20 shrink-0 text-right text-sm font-bold tabular-nums">{track.streams}</span>
+                <span className="w-24 shrink-0 text-right text-sm font-bold tabular-nums">
+                  {formatNumber(track.streams)}
+                </span>
               </li>
             ))}
           </ul>

@@ -249,7 +249,9 @@ export function ArtistDetailPage() {
                   </p>
                 </div>
 
-                <p className="flex shrink-0 items-center gap-1.5 text-xs font-semibold tabular-nums text-muted">
+                {/* Ancho fijo: con el ancho al contenido, "998" y "10.411"
+                    dejaban la cifra en una x distinta en cada fila. */}
+                <p className="flex w-24 shrink-0 items-center justify-end gap-1.5 text-xs font-semibold tabular-nums text-muted">
                   <Play size={12} aria-hidden />
                   {track.playCount.toLocaleString('es')}
                 </p>

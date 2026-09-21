@@ -247,37 +247,49 @@ export function AdminShell({ title, subtitle, actions, children }: AdminShellPro
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-4 border-b border-white/10 bg-background/60 px-5 py-4 backdrop-blur-xl sm:px-8">
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            className="text-muted transition-colors hover:text-foreground lg:hidden"
-            aria-label="Abrir navegación"
-          >
-            <Menu size={20} />
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-bold">{title}</h1>
-            {subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          </div>
-
-          {actions}
-
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted sm:inline">{user?.displayName}</span>
+        <header className="border-b border-white/10 bg-background/60 px-5 py-4 backdrop-blur-xl sm:px-8">
+          {/* Mismo tope de ancho que el contenido: si no, en pantalla ancha el
+              título arranca donde empieza el contenido pero "Salir" se va al
+              borde, y la cabecera no cuadra con lo de abajo. */}
+          <div className="mx-auto flex w-full max-w-[1400px] items-center gap-4">
             <button
               type="button"
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 text-sm font-semibold transition-colors hover:border-white"
+              onClick={() => setMobileNavOpen(true)}
+              className="text-muted transition-colors hover:text-foreground lg:hidden"
+              aria-label="Abrir navegación"
             >
-              <LogOut size={15} aria-hidden />
-              <span className="hidden sm:inline">Salir</span>
+              <Menu size={20} />
             </button>
+
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-xl font-bold">{title}</h1>
+              {subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+            </div>
+
+            {actions}
+
+            {/* Separador: sin él las acciones de la página y el bloque de
+                sesión se leen como una sola tira de botones. */}
+            <div className="flex shrink-0 items-center gap-3 border-l border-white/10 pl-4">
+              <span className="hidden text-sm text-muted sm:inline">{user?.displayName}</span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 text-sm font-semibold transition-colors hover:border-white"
+              >
+                <LogOut size={15} aria-hidden />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+            </div>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-5 py-8 sm:px-8">{children}</main>
+        <main className="min-w-0 flex-1 px-5 py-8 sm:px-8">
+          {/* Tope de ancho. Sin él, en un monitor ancho cada fila estira sus
+              columnas hasta el borde y quedan palmos de vacío entre el nombre
+              y sus botones, que es lo que hace que el panel se vea disperso. */}
+          <div className="mx-auto w-full max-w-[1400px]">{children}</div>
+        </main>
       </div>
 
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}

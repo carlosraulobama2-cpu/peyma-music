@@ -130,13 +130,18 @@ export function UsersPage() {
                   </p>
                 </div>
 
+                {/* Anchos fijos. Con el ancho al contenido, "9" y "1200" no
+                    ocupan lo mismo y cada fila movía la columna unos píxeles:
+                    la lista entera se veía temblorosa en vez de tabular. */}
                 <div className="hidden shrink-0 gap-4 font-mono text-[11px] text-muted sm:flex">
-                  <span>{user._count.streamLogs} repr.</span>
-                  <span>{user._count.playlists} listas</span>
-                  <span>{user._count.favorites} favs</span>
+                  <span className="w-24 text-right">{user._count.streamLogs} repr.</span>
+                  <span className="w-20 text-right">{user._count.playlists} listas</span>
+                  <span className="w-20 text-right">{user._count.favorites} favs</span>
                 </div>
 
-                <span className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${meta.className}`}>
+                <span
+                  className={`flex w-24 shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${meta.className}`}
+                >
                   <Icon size={12} aria-hidden />
                   {meta.label}
                 </span>
@@ -146,7 +151,7 @@ export function UsersPage() {
                   onChange={(e) => changeRole(user, e.target.value as UserRole)}
                   disabled={busyId === user.id}
                   aria-label={`Rol de ${user.displayName}`}
-                  className="shrink-0 rounded-lg border border-white/15 bg-black/20 px-2 py-1.5 text-xs outline-none focus:border-brand disabled:opacity-50"
+                  className="w-24 shrink-0 rounded-lg border border-white/15 bg-black/20 px-2 py-1.5 text-xs outline-none focus:border-brand disabled:opacity-50"
                 >
                   {ROLES.map((role) => (
                     <option key={role} value={role}>

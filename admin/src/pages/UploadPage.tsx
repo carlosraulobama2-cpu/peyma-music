@@ -64,14 +64,14 @@ export function UploadPage() {
   };
 
   return (
-    <AdminShell title="Subir canción" subtitle={"Pasa por el mismo pipeline que una subida de artista: se analiza el ritmo y queda en la cola de moderación, no se publica sola."}>
-        <h1 className="text-2xl font-bold">Subir canción</h1>
-        <p className="mt-1 text-sm text-muted">
-          Pasa por el mismo pipeline que una subida de artista: se analiza el ritmo y queda en la cola de moderación, no se
-          publica sola.
-        </p>
-
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
+    // El título y el subtítulo los pone AdminShell; repetirlos aquí los
+    // mostraba dos veces seguidos. El formulario va con ancho de lectura: un
+    // campo de texto de 1200 px de ancho no se lee, se recorre.
+    <AdminShell
+      title="Subir canción"
+      subtitle="Pasa por el mismo pipeline que una subida de artista: se analiza el ritmo y queda en la cola de moderación, no se publica sola."
+    >
+        <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-5">
           <label className="flex flex-col gap-2 text-sm font-semibold">
             Artista
             <select

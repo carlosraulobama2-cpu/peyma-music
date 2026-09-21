@@ -96,12 +96,16 @@ export function SettingsPage() {
                           <p className="mt-1 font-mono text-[10px] text-muted">{setting.key}</p>
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-2">
+                        {/* Columna de control de ancho fijo y alineada a la
+                            derecha: si no, "Activado" y "Desactivado" (y los
+                            ajustes con o sin botón de restablecer) dejaban
+                            cada control en un sitio distinto. */}
+                        <div className="flex w-64 shrink-0 items-center justify-end gap-2">
                           {setting.type === 'boolean' ? (
                             <button
                               type="button"
                               onClick={() => save(setting.key, setting.value === 'true' ? 'false' : 'true')}
-                              className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${
+                              className={`w-28 rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${
                                 setting.value === 'true' ? 'bg-brand text-black' : 'bg-white/10 text-muted'
                               }`}
                             >
@@ -119,16 +123,22 @@ export function SettingsPage() {
                                   isDirty ? 'border-brand' : 'border-white/15 focus:border-brand'
                                 }`}
                               />
-                              {!setting.isDefault && (
-                                <button
-                                  type="button"
-                                  onClick={() => save(setting.key, setting.defaultValue)}
-                                  title={`Volver al valor por defecto (${setting.defaultValue})`}
-                                  className="text-muted transition-colors hover:text-foreground"
-                                >
-                                  <RotateCcw size={14} />
-                                </button>
-                              )}
+                              {/* El hueco se reserva siempre: un ajuste ya en
+                                  su valor por defecto no muestra el botón,
+                                  pero su campo tiene que quedar a la misma
+                                  altura horizontal que los demás. */}
+                              <span className="flex w-5 shrink-0 justify-center">
+                                {!setting.isDefault && (
+                                  <button
+                                    type="button"
+                                    onClick={() => save(setting.key, setting.defaultValue)}
+                                    title={`Volver al valor por defecto (${setting.defaultValue})`}
+                                    className="text-muted transition-colors hover:text-foreground"
+                                  >
+                                    <RotateCcw size={14} />
+                                  </button>
+                                )}
+                              </span>
                             </>
                           )}
                         </div>

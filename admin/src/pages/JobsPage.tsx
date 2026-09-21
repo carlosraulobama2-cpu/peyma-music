@@ -119,28 +119,38 @@ export function JobsPage() {
         <ul className="flex flex-col gap-3">
           {data.jobs.map((job) => (
             <li key={job.id} className="rounded-xl border border-white/10 bg-surface p-4">
+              {/* Columnas de ancho fijo. COMPLETED es casi el doble de ancho
+                  que FAILED, así que con el ancho al contenido el tipo de
+                  trabajo y el título de la pista empezaban en una posición
+                  distinta en cada fila y la cola no se podía leer en vertical.
+                  Lo mismo con los intentos y el botón de reintentar: se
+                  reservan aunque no haya nada que poner. */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[job.status]}`}>
+                <span
+                  className={`w-28 shrink-0 rounded-full px-2.5 py-1 text-center text-xs font-bold ${STATUS_STYLES[job.status]}`}
+                >
                   {job.status}
                 </span>
-                <span className="font-mono text-xs font-semibold text-muted">{job.kind}</span>
+                <span className="w-24 shrink-0 font-mono text-xs font-semibold text-muted">{job.kind}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                   {job.track ? `${job.track.title} — ${job.track.artist.name}` : 'sin pista asociada'}
                 </span>
-                {job.attempts > 1 && (
-                  <span className="text-xs text-muted">{job.attempts} intentos</span>
-                )}
-                {job.status === 'FAILED' && (
-                  <button
-                    type="button"
-                    onClick={() => handleRetry(job.id)}
-                    disabled={retrying === job.id}
-                    className="flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 text-xs font-semibold transition-colors hover:border-white disabled:opacity-50"
-                  >
-                    <RotateCcw size={12} aria-hidden />
-                    {retrying === job.id ? 'Reencolando…' : 'Reintentar'}
-                  </button>
-                )}
+                <span className="w-20 shrink-0 text-right text-xs text-muted">
+                  {job.attempts > 1 ? `${job.attempts} intentos` : ''}
+                </span>
+                <span className="flex w-32 shrink-0 justify-end">
+                  {job.status === 'FAILED' && (
+                    <button
+                      type="button"
+                      onClick={() => handleRetry(job.id)}
+                      disabled={retrying === job.id}
+                      className="flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 text-xs font-semibold transition-colors hover:border-white disabled:opacity-50"
+                    >
+                      <RotateCcw size={12} aria-hidden />
+                      {retrying === job.id ? 'Reencolando…' : 'Reintentar'}
+                    </button>
+                  )}
+                </span>
               </div>
 
               {job.errorMessage && (

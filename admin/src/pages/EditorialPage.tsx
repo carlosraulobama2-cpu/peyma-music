@@ -239,10 +239,13 @@ export function EditorialPage() {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 truncate font-semibold">
-                      {section.title}
+                    {/* El que se recorta es el título, no la etiqueta: con
+                        `truncate` en el contenedor era la etiqueta la que
+                        perdía letras y se leía "BORRADO". */}
+                    <p className="flex items-center gap-2 font-semibold">
+                      <span className="truncate">{section.title}</span>
                       {!section.isPublished && (
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-muted">
+                        <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-muted">
                           BORRADOR
                         </span>
                       )}
@@ -254,12 +257,16 @@ export function EditorialPage() {
                     </p>
                   </div>
 
+                  {/* Anchos fijos de aquí abajo: el desplegable se encogía a
+                      "Cuadrícula" o se estiraba a "Carrusel horizontal", y
+                      eso empujaba los botones de cada fila a una x distinta.
+                      La etiqueta BORRADOR hacía lo mismo desde la izquierda. */}
                   <select
                     value={section.layout}
                     onChange={(e) => patch(section, { layout: e.target.value as EditorialLayout })}
                     disabled={busyId === section.id}
                     aria-label="Disposición"
-                    className="rounded-lg border border-white/15 bg-black/20 px-2 py-1.5 text-xs outline-none focus:border-brand"
+                    className="w-44 shrink-0 rounded-lg border border-white/15 bg-black/20 px-2 py-1.5 text-xs outline-none focus:border-brand"
                   >
                     {LAYOUTS.map((layout) => (
                       <option key={layout} value={layout}>
@@ -271,7 +278,7 @@ export function EditorialPage() {
                   <button
                     type="button"
                     onClick={() => openPreview(section)}
-                    className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold transition-colors hover:border-white"
+                    className="w-28 shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold transition-colors hover:border-white"
                   >
                     Vista previa
                   </button>
@@ -280,7 +287,7 @@ export function EditorialPage() {
                     type="button"
                     onClick={() => patch(section, { isPublished: !section.isPublished })}
                     disabled={busyId === section.id}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                    className={`flex w-28 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
                       section.isPublished ? 'bg-brand/15 text-brand' : 'bg-white/10 text-muted hover:text-foreground'
                     }`}
                   >
@@ -292,7 +299,7 @@ export function EditorialPage() {
                     type="button"
                     onClick={() => setPendingDelete(section)}
                     aria-label={`Eliminar ${section.title}`}
-                    className="text-muted transition-colors hover:text-danger"
+                    className="shrink-0 text-muted transition-colors hover:text-danger"
                   >
                     <Trash2 size={15} />
                   </button>

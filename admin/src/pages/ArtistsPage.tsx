@@ -180,12 +180,16 @@ export function ArtistsPage() {
                   </p>
                 </div>
 
+                {/* Cada botón con ancho fijo: "Verificar"/"Verificado" y
+                    "Bloquear"/"Desbloquear" no miden lo mismo, así que sin
+                    esto la columna de acciones se corría en las filas de
+                    artistas bloqueados o verificados. */}
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <button
                     onClick={() => handleToggleVerified(artist)}
                     disabled={busyId === artist.id}
                     title={artist.isVerified ? 'Retirar la verificación' : 'Dar el check de verificado'}
-                    className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
+                    className={`flex w-32 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
                       artist.isVerified
                         ? 'bg-sky-500/20 text-sky-300 ring-1 ring-inset ring-sky-400/40'
                         : 'border border-white/30 hover:border-white'
@@ -197,7 +201,7 @@ export function ArtistsPage() {
                   <button
                     onClick={() => handleToggleBlock(artist)}
                     disabled={busyId === artist.id}
-                    className={`rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ease-in-out hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
+                    className={`w-32 rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ease-in-out hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
                       artist.isBlocked ? 'bg-brand text-black hover:bg-brand-hover' : 'border border-white/30 hover:border-white'
                     }`}
                   >
@@ -206,7 +210,7 @@ export function ArtistsPage() {
                   <button
                     onClick={() => setPendingDelete(artist)}
                     disabled={busyId === artist.id}
-                    className="rounded-full border border-danger/50 px-4 py-2 text-xs font-semibold text-danger transition-all duration-300 ease-in-out hover:border-danger disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-24 rounded-full border border-danger/50 px-4 py-2 text-xs font-semibold text-danger transition-all duration-300 ease-in-out hover:border-danger disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Eliminar
                   </button>

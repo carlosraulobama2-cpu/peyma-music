@@ -37,12 +37,20 @@ const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'altas', label: 'Altas fallidas', icon: UserX },
 ];
 
-/** Aviso de cuánto del dato es estimación. Se calla si todo está medido. */
+/**
+ * Aviso de cuánto del dato es estimación. Se calla si todo está medido.
+ *
+ * Ocupa su columna aunque no diga nada: si desapareciera del todo, las filas
+ * sin estimación correrían las horas hacia la derecha y la columna dejaría
+ * de leerse como columna.
+ */
 function EstimateNote({ share }: { share: number }) {
-  if (share < 0.01) return null;
   return (
-    <span className="ml-2 text-[11px] text-amber-400" title="Reproducciones sin tiempo real medido; se estima con la duración completa">
-      ~{Math.round(share * 100)}% estimado
+    <span
+      className="w-28 shrink-0 text-right text-[11px] text-amber-400"
+      title={share >= 0.01 ? 'Reproducciones sin tiempo real medido; se estima con la duración completa' : undefined}
+    >
+      {share >= 0.01 ? `~${Math.round(share * 100)}% estimado` : ''}
     </span>
   );
 }
@@ -213,10 +221,10 @@ export function AudiencePage() {
                     <p className="truncate text-sm font-semibold">{entry.displayName}</p>
                     <p className="truncate text-xs text-muted">{entry.email}</p>
                   </div>
-                  <span className="shrink-0 text-sm font-bold tabular-nums">
+                  <span className="w-28 shrink-0 text-right text-sm font-bold tabular-nums">
                     {formatHours(entry.seconds)}
-                    <EstimateNote share={entry.estimatedShare} />
                   </span>
+                  <EstimateNote share={entry.estimatedShare} />
                   <span className="w-24 shrink-0 text-right font-mono text-xs text-muted">{entry.streams} repr.</span>
                 </li>
               ))}
@@ -248,10 +256,10 @@ export function AudiencePage() {
                     {artist.listeners} oyente(s) · {artist.streams} reproducciones
                   </p>
                 </div>
-                <span className="shrink-0 text-sm font-bold tabular-nums">
+                <span className="w-28 shrink-0 text-right text-sm font-bold tabular-nums">
                   {formatHours(artist.seconds)}
-                  <EstimateNote share={artist.estimatedShare} />
                 </span>
+                <EstimateNote share={artist.estimatedShare} />
               </li>
             ))}
           </ul>
@@ -290,7 +298,7 @@ export function AudiencePage() {
                     <span className="w-6 shrink-0 text-center font-mono text-sm text-muted">{index + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">{entry.sample}</span>
                     <span
-                      className={`shrink-0 text-xs font-semibold ${entry.avgResults === 0 ? 'text-amber-400' : 'text-muted'}`}
+                      className={`w-32 shrink-0 text-right text-xs font-semibold ${entry.avgResults === 0 ? 'text-amber-400' : 'text-muted'}`}
                     >
                       {entry.avgResults} resultado(s)
                     </span>
@@ -325,7 +333,9 @@ export function AudiencePage() {
                     key={attempt.id}
                     className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-surface px-4 py-3"
                   >
-                    <span className="shrink-0 rounded-full bg-danger/15 px-2.5 py-1 text-xs font-bold text-danger">
+                    {/* Ancho fijo: las cuatro etiquetas miden distinto y sin
+                        esto el correo arrancaba en un sitio en cada fila. */}
+                    <span className="w-44 shrink-0 truncate rounded-full bg-danger/15 px-2.5 py-1 text-center text-xs font-bold text-danger">
                       {SIGNUP_STAGE_LABELS[attempt.stage]}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm">{attempt.email ?? '(sin correo)'}</span>

@@ -188,7 +188,7 @@ export function PlaylistsPage() {
                 type="button"
                 onClick={() => void handleToggleBlock(playlist)}
                 disabled={busyId === playlist.id}
-                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/25 px-3.5 py-1.5 text-xs font-semibold transition-colors hover:border-white disabled:opacity-50"
+                className="flex w-28 shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/25 px-3.5 py-1.5 text-xs font-semibold transition-colors hover:border-white disabled:opacity-50"
               >
                 {playlist.isBlocked ? <ShieldCheck size={13} aria-hidden /> : <ShieldOff size={13} aria-hidden />}
                 {playlist.isBlocked ? 'Restaurar' : 'Bloquear'}
@@ -198,7 +198,7 @@ export function PlaylistsPage() {
                 type="button"
                 onClick={() => setPendingDelete(playlist)}
                 disabled={busyId === playlist.id}
-                className="flex shrink-0 items-center gap-1.5 rounded-full border border-danger/50 px-3.5 py-1.5 text-xs font-semibold text-danger transition-colors hover:border-danger disabled:opacity-50"
+                className="flex w-28 shrink-0 items-center justify-center gap-1.5 rounded-full border border-danger/50 px-3.5 py-1.5 text-xs font-semibold text-danger transition-colors hover:border-danger disabled:opacity-50"
               >
                 <Trash2 size={13} aria-hidden />
                 Eliminar
