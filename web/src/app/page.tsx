@@ -340,7 +340,13 @@ export default async function LandingPage() {
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-xs text-muted sm:flex-row sm:px-8">
           <span>© {new Date().getFullYear()} Peyma Music</span>
-          <nav className="flex items-center gap-6">
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            <Link href="/legal/terminos" className="transition-colors hover:text-foreground">
+              Términos
+            </Link>
+            <Link href="/legal/privacidad" className="transition-colors hover:text-foreground">
+              Privacidad
+            </Link>
             <Link href="/login" className="transition-colors hover:text-foreground">
               Iniciar sesión
             </Link>

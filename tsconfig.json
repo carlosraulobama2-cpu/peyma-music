@@ -20,7 +20,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": false,
     "types": [
-      "jest"
+      "jest",
+      "node"
     ],
     "paths": {
       "@/*": [

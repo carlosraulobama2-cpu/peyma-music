@@ -44,6 +44,26 @@ function extractErrorMessage(data: unknown, status: number): string {
   return `Error del servidor (${status})`;
 }
 
+/**
+ * Error de "no llegué al servidor".
+ *
+ * El navegador lanza el MISMO TypeError si la API está apagada y si la
+ * respuesta llegó pero CORS la bloqueó — por seguridad no revela cuál de
+ * las dos fue. Como no se pueden distinguir desde aquí, el mensaje nombra
+ * la URL a la que se intentó llegar y el origen desde el que se llamó: con
+ * eso se ve de un vistazo si el puerto o el host son los esperados, que es
+ * la causa habitual (Vite mudándose a 5174, o abrir el panel por
+ * 127.0.0.1 cuando CORS sólo permite localhost).
+ */
+function unreachableError(): ApiError {
+  const origen = typeof window !== 'undefined' ? window.location.origin : 'este origen';
+  return new ApiError(
+    `No se pudo contactar con la API en ${API_URL}. Comprobá que esté levantada y que ${origen} figure en CORS_ORIGINS del backend.`,
+    0,
+    'network_error',
+  );
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -65,7 +85,7 @@ async function request<T>(path: string, { method = 'GET', body, skipAuth }: Requ
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError('No se pudo conectar con el servidor. Revisa tu conexión.', 0, 'network_error');
+    throw unreachableError();
   }
 
   const isJson = response.headers.get('content-type')?.includes('application/json');
@@ -103,7 +123,7 @@ export async function uploadFile<T>(path: string, formData: FormData): Promise<T
   try {
     response = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
   } catch {
-    throw new ApiError('No se pudo conectar con el servidor. Revisa tu conexión.', 0, 'network_error');
+    throw unreachableError();
   }
 
   const isJson = response.headers.get('content-type')?.includes('application/json');

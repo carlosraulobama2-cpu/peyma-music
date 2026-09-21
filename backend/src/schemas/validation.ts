@@ -15,6 +15,23 @@ export const registerSchema = z.object({
   displayName: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(50),
   favoriteGenres: z.array(z.string().trim().min(1)).max(20).optional(),
   avatarUrl: z.string().url().optional(),
+  /**
+   * Aceptación de los términos y la política de privacidad.
+   *
+   * Se exige en el servidor y no sólo con una casilla en el formulario: la
+   * casilla la ve quien use la web o la app, pero la API es pública y
+   * cualquiera puede llamar a `/auth/register` directamente. Si el requisito
+   * viviera únicamente en el cliente, el registro no probaría nada.
+   *
+   * `literal(true)`: `false` y la ausencia del campo se rechazan igual, no
+   * hay un "por defecto acepta".
+   *
+   * QUÉ versión aceptó no se pide aquí: lo estampa el servidor desde
+   * `src/legal.ts`. Ver el porqué en ese archivo.
+   */
+  acceptedTerms: z.literal(true, {
+    errorMap: () => ({ message: 'Tenés que aceptar los términos y la política de privacidad.' }),
+  }),
 });
 
 export const loginSchema = z.object({
@@ -26,6 +43,13 @@ export const loginSchema = z.object({
 // (RN/Expo) — acá sólo se verifica su firma/audiencia, nunca se genera.
 export const googleAuthSchema = z.object({
   idToken: z.string().min(10, 'Token de Google inválido'),
+  /**
+   * Opcional porque este endpoint sirve para iniciar sesión Y para
+   * registrarse: a quien ya tiene cuenta no se le vuelve a pedir que
+   * acepte. La ruta sólo lo exige cuando la petición acabaría creando una
+   * cuenta nueva (ver routes/auth.ts).
+   */
+  acceptedTerms: z.literal(true).optional(),
 });
 
 export const updateProfileSchema = z

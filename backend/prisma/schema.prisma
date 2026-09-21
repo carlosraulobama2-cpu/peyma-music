@@ -204,6 +204,17 @@ model User {
   /// que el cliente deje de mandarla.
   locationConsent LocationConsent @default(NOT_ASKED)
   locationConsentAt DateTime?
+  /// Cuándo aceptó los términos y la política de privacidad, y QUÉ versión.
+  ///
+  /// La versión y no un booleano: los textos cambian, y "aceptó" sin decir
+  /// qué aceptó no sirve para responder a una reclamación ni para saber a
+  /// quién hay que volver a pedírselo cuando se publique una revisión.
+  ///
+  /// Nulos para las cuentas creadas antes de que existiera este registro; no
+  /// se rellenan con una fecha inventada, porque un consentimiento que nadie
+  /// dio es peor que ninguno.
+  acceptedTermsVersion String?
+  acceptedTermsAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

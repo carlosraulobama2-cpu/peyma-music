@@ -26,9 +26,27 @@ interface AuthContextValue {
   isLoading: boolean;
   isSubmitting: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
-  /** `idToken` lo entrega el botón de Google (Google Identity Services) en el cliente — ver services/googleAuth.ts del backend para la verificación. */
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  /**
+   * `acceptedTerms` no tiene valor por defecto a propósito: quien llame a
+   * `register` tiene que decidirlo explícitamente, para que no se cuele un
+   * alta sin consentimiento por olvidar un argumento.
+   */
+  register: (input: {
+    email: string;
+    password: string;
+    displayName: string;
+    favoriteGenres?: string[];
+    acceptedTerms: boolean;
+  }) => Promise<void>;
+  /**
+   * `idToken` lo entrega el botón de Google (Google Identity Services) en el cliente — ver services/googleAuth.ts del backend para la verificación.
+   *
+   * `acceptedTerms` sólo hace falta cuando la llamada puede acabar creando
+   * una cuenta (el botón en la pantalla de registro). Desde el login se
+   * omite: si la cuenta no existe, el backend responde `terms_required` y
+   * el cliente manda a la persona a registrarse.
+   */
+  loginWithGoogle: (idToken: string, acceptedTerms?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   /**
    * Vuelve a leer el usuario del servidor.
@@ -91,12 +109,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (email: string, password: string, displayName: string) => {
+  const register = useCallback<AuthContextValue["register"]>(async ({ email, password, displayName, favoriteGenres, acceptedTerms }) => {
     setIsSubmitting(true);
     try {
       const { user, token } = await http.post<{ user: BackendUser; token: string }>(
         "/auth/register",
-        { email: email.trim().toLowerCase(), password, displayName: displayName.trim() },
+        {
+          email: email.trim().toLowerCase(),
+          password,
+          displayName: displayName.trim(),
+          // Se omite si está vacío en vez de mandar `[]`: el backend ya
+          // trata el campo como opcional y así la petición dice lo que pasó
+          // (no eligió géneros), no un array vacío ambiguo.
+          ...(favoriteGenres && favoriteGenres.length > 0 ? { favoriteGenres } : {}),
+          acceptedTerms,
+        },
         { skipAuth: true },
       );
       setAuthToken(token);
@@ -111,12 +138,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const loginWithGoogle = useCallback(async (idToken: string) => {
+  const loginWithGoogle = useCallback(async (idToken: string, acceptedTerms?: boolean) => {
     setIsSubmitting(true);
     try {
       const { user, token } = await http.post<{ user: BackendUser; token: string }>(
         "/auth/google/token",
-        { idToken },
+        { idToken, ...(acceptedTerms ? { acceptedTerms: true } : {}) },
         { skipAuth: true },
       );
       setAuthToken(token);
@@ -125,6 +152,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // sus playlists y su historial. Se descarta al cambiar de cuenta.
       invalidateHomeFeed();
     } catch (error) {
+      // `terms_required` significa que esa cuenta de Google todavía no
+      // existe acá, así que entrar con ella sería un alta. Se traduce a algo
+      // accionable: el mensaje del backend habla de aceptar términos, y
+      // desde la pantalla de login no hay ninguna casilla que marcar.
+      if (error instanceof ApiError && error.code === "terms_required") {
+        throw new AuthError("No hay ninguna cuenta con ese Google todavía. Creala desde «Registrate» y aceptá los términos.");
+      }
       throw toAuthError(error, "No se pudo iniciar sesión con Google.");
     } finally {
       setIsSubmitting(false);

@@ -51,8 +51,25 @@ interface AuthStore {
   token: string | null;
 
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string, favoriteGenres?: string[]) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  /**
+   * `acceptedTerms` es obligatorio y sin valor por defecto: el backend lo
+   * exige (`registerSchema`) y dejarlo opcional aquí permitiría que una
+   * pantalla nueva olvidara pedirlo y el alta fallara en producción con un
+   * 400 en vez de no compilar.
+   */
+  register: (input: {
+    email: string;
+    password: string;
+    displayName: string;
+    favoriteGenres?: string[];
+    acceptedTerms: boolean;
+  }) => Promise<void>;
+  /**
+   * `acceptedTerms` sólo hace falta cuando la llamada puede crear la cuenta
+   * (el botón desde la pantalla de alta). Desde el login se omite: si la
+   * cuenta no existe, el backend responde con el código `terms_required`.
+   */
+  loginWithGoogle: (idToken: string, acceptedTerms?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   loadStoredSession: () => Promise<void>;
   /** Parches locales al perfil (cambiar a cuenta de artista, editar nombre, etc.) — no todo campo del `User` local vive en el backend. */
@@ -123,14 +140,24 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      register: async (email, password, displayName, favoriteGenres) => {
+      register: async ({ email, password, displayName, favoriteGenres, acceptedTerms }) => {
         assertValidEmail(email);
         assertRegisterCredentials(password, displayName);
+        // Se corta antes de la red: el backend lo rechazaría igual, pero el
+        // mensaje llegaría como un error de validación genérico en vez de
+        // decir exactamente qué falta.
+        if (!acceptedTerms) throw new AuthError('Tenés que aceptar los términos y la política de privacidad.');
         set({ isSubmitting: true });
         try {
           const { user, token } = await http.post<{ user: BackendUser; token: string }>(
             '/auth/register',
-            { email: email.trim().toLowerCase(), password, displayName: displayName.trim(), favoriteGenres },
+            {
+              email: email.trim().toLowerCase(),
+              password,
+              displayName: displayName.trim(),
+              favoriteGenres,
+              acceptedTerms: true,
+            },
             { skipAuth: true },
           );
           await setAuthToken(token);
@@ -143,12 +170,12 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       /** El id_token lo entrega el SDK nativo de Google en el cliente — ver services/googleAuth.ts del lado del backend para la verificación. */
-      loginWithGoogle: async (idToken) => {
+      loginWithGoogle: async (idToken, acceptedTerms) => {
         set({ isSubmitting: true });
         try {
           const { user, token } = await http.post<{ user: BackendUser; token: string }>(
             '/auth/google/token',
-            { idToken },
+            { idToken, ...(acceptedTerms ? { acceptedTerms: true } : {}) },
             { skipAuth: true },
           );
           await setAuthToken(token);
@@ -156,6 +183,13 @@ export const useAuthStore = create<AuthStore>()(
           adoptSessionLibrary();
         } catch (error) {
           set({ isSubmitting: false });
+          // `terms_required` significa que esa cuenta de Google todavía no
+          // existe acá, así que entrar con ella sería un alta. Se traduce a
+          // algo accionable: desde la pantalla de login no hay ninguna
+          // casilla de términos que marcar.
+          if (error instanceof ApiError && error.code === 'terms_required') {
+            throw new AuthError('No hay ninguna cuenta con ese Google todavía. Creala desde "Empieza aquí" y aceptá los términos.');
+          }
           throw toAuthError(error, 'No se pudo iniciar sesión con Google.');
         }
       },

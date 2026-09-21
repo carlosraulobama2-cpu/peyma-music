@@ -2,7 +2,7 @@
 // process.env.DATABASE_URL en el momento en que se cargan, no perezosamente.
 import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
-import cors from 'cors';
+import cors, { type CorsOptions } from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { rateLimit } from 'express-rate-limit';
@@ -66,13 +66,62 @@ if (isProd && allowedOrigins.length === 0) {
   process.exit(1);
 }
 
+/**
+ * ¿Es un origen de la propia máquina de quien desarrolla?
+ *
+ * Fuera de producción se aceptan todos, además de los que liste
+ * `CORS_ORIGINS`. Motivo: en local el origen cambia solo y el fallo que
+ * provoca no se parece en nada a su causa.
+ *
+ *  - `localhost` y `127.0.0.1` son la misma máquina pero DISTINTO origen
+ *    para el navegador. Abrir el panel por una y tenerlo permitido por la
+ *    otra lo bloquea entero.
+ *  - Vite y Next se corren de puerto solos si el suyo está ocupado (5173 →
+ *    5174), y entonces el origen ya no está en la lista.
+ *
+ * En los dos casos el navegador bloquea la respuesta y `fetch` rechaza con
+ * un TypeError idéntico al de "no hay red", así que el panel dice "no se
+ * pudo conectar con el servidor" mientras el servidor está perfectamente
+ * levantado y respondiendo por curl.
+ *
+ * Esto NO relaja producción: `isProd` corta el atajo, y allí sigue mandando
+ * únicamente la lista explícita.
+ */
+function isLocalDevOrigin(origin: string): boolean {
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (protocol !== 'http:' && protocol !== 'https:') return false;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `origin` como función y no como lista: hay que decidir por petición para
+ * poder aceptar el comodín de desarrollo. Un `origin` ausente (curl, apps
+ * nativas, peticiones servidor a servidor) se acepta — CORS es una
+ * protección del navegador y ahí no hay navegador al que proteger.
+ */
+const corsOrigin: CorsOptions['origin'] = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  if (allowedOrigins.includes(origin)) return callback(null, true);
+  if (!isProd && isLocalDevOrigin(origin)) return callback(null, true);
+
+  // Se registra el origen rechazado: sin esto, diagnosticar un bloqueo de
+  // CORS obliga a adivinar, porque el navegador no cuenta el porqué y el
+  // servidor no dejaba rastro.
+  logger.warn({ origin }, 'CORS: origen no permitido');
+  return callback(null, false);
+};
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // detrás de un balanceador/proxy, para que el rate limit vea la IP real
 
 app.use(helmet());
 app.use(
   cors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    origin: corsOrigin,
     credentials: true,
   }),
 );

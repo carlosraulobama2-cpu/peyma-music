@@ -9,6 +9,7 @@ import { recordSignupFailure } from '../services/signupAttempts';
 import { AppError, ConflictError, UnauthorizedError, NotFoundError } from '../utils/errors';
 import { verifyGoogleIdToken } from '../services/googleAuth';
 import { isObjectStorageEnabled, createPresignedAvatarUpload } from '../services/objectStorage';
+import { CURRENT_TERMS_VERSION } from '../legal';
 
 const router = Router();
 
@@ -63,6 +64,11 @@ router.post('/register', authRateLimit, async (req, res: Response) => {
       passwordHash,
       favoriteGenres: data.favoriteGenres ?? [],
       avatarUrl: data.avatarUrl,
+      // El `acceptedTerms: true` ya lo exigió el esquema; acá se deja
+      // constancia de CUÁNDO y de QUÉ versión, que es lo que convierte la
+      // casilla en un registro con valor.
+      acceptedTermsVersion: CURRENT_TERMS_VERSION,
+      acceptedTermsAt: new Date(),
     },
     select: PUBLIC_USER_SELECT,
   });
@@ -96,7 +102,7 @@ router.post('/login', authRateLimit, async (req, res: Response) => {
  *  - Cuenta ya vinculada: se usa tal cual, no hay nada que actualizar.
  */
 router.post('/google/token', authRateLimit, async (req, res: Response) => {
-  const { idToken } = googleAuthSchema.parse(req.body);
+  const { idToken, acceptedTerms } = googleAuthSchema.parse(req.body);
   const profile = await verifyGoogleIdToken(idToken);
 
   let user = await prisma.user.findFirst({
@@ -104,6 +110,21 @@ router.post('/google/token', authRateLimit, async (req, res: Response) => {
   });
 
   if (!user) {
+    /**
+     * Entrar con Google en una cuenta que no existe ES un registro, y como
+     * tal necesita la aceptación. Se comprueba aquí y no en el esquema
+     * porque el mismo endpoint sirve para iniciar sesión: a quien ya tiene
+     * cuenta no se le puede exigir que vuelva a aceptar en cada entrada.
+     *
+     * El código `terms_required` deja que el cliente distinga este caso y
+     * muestre el paso de aceptación en vez de un error genérico: el botón
+     * de Google puede abrirse desde la pantalla de login, donde todavía no
+     * se preguntó nada.
+     */
+    if (acceptedTerms !== true) {
+      throw new AppError('Tenés que aceptar los términos y la política de privacidad para crear la cuenta.', 400, 'terms_required');
+    }
+
     user = await prisma.user.create({
       data: {
         email: profile.email,
@@ -111,6 +132,8 @@ router.post('/google/token', authRateLimit, async (req, res: Response) => {
         googleId: profile.googleId,
         avatarUrl: profile.avatarUrl,
         favoriteGenres: [],
+        acceptedTermsVersion: CURRENT_TERMS_VERSION,
+        acceptedTermsAt: new Date(),
       },
     });
   } else if (!user.googleId) {

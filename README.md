@@ -106,5 +106,39 @@ npm run lint
 npm run build && npm start    # build de producción
 ```
 
+### Web pública (`/web`)
+
+```bash
+cd web
+npm install
+cp .env.example .env.local    # NEXT_PUBLIC_API_URL apunta al backend
+npm run dev                   # http://localhost:3001
+```
+
+### Panel de administración (`/admin`)
+
+```bash
+cd admin
+npm install
+cp .env.example .env          # VITE_API_URL apunta al backend
+npm run dev                   # http://localhost:5173
+```
+
+El panel **sólo acepta cuentas con rol `ADMIN`**, y ni el seed ni el registro
+público crean una: las dos dejan la cuenta en `USER`. La primera cuenta de
+administrador se crea desde el backend:
+
+```bash
+cd backend
+npm run admin:create -- --email=tu@correo.com --name="Tu Nombre"
+```
+
+Pregunta la contraseña sin mostrarla. Si el correo ya existe lo asciende a
+`ADMIN` en vez de fallar, así que el mismo comando sirve para recuperar el
+acceso; con `--reset` además cambia la contraseña. `--help` lista todo.
+
+Con los datos de ejemplo, `demo@peyma.music` / `demo12345` ya es
+administrador.
+
 ---
 *Desarrollado con ❤️ para Peyma*
