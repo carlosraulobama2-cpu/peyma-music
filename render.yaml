@@ -22,6 +22,12 @@ services:
     runtime: node
     rootDir: backend
     plan: starter
+    # Ohio, no Oregon: la base de datos vive en Neon us-east-2 (Ohio) y
+    # cada petición hace varias consultas. Cruzar el país por cada una
+    # añade ~60 ms de ida y vuelta que no se recuperan en ningún sitio.
+    # La región NO se puede cambiar en un servicio ya creado: si esto se
+    # toca, hay que borrar los servicios y volver a aplicar el blueprint.
+    region: ohio
     # `prisma migrate deploy` va en el build, no en el arranque: si una
     # migración falla, el despliegue se marca fallido y Render mantiene la
     # versión anterior sirviendo. Puesto en el arranque, el contenedor
@@ -90,6 +96,7 @@ services:
     runtime: node
     rootDir: backend
     plan: starter
+    region: ohio
     # Aquí NO se migra: lo hace peyma-api. Dos servicios corriendo
     # `migrate deploy` a la vez compiten por el mismo advisory lock.
     buildCommand: npm install && npm run build
@@ -123,6 +130,7 @@ services:
     runtime: node
     rootDir: web
     plan: starter
+    region: ohio
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
