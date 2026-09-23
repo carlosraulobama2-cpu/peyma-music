@@ -94,7 +94,7 @@ interface PresignedUpload {
 }
 
 /**
- * Sube la imagen al bucket y devuelve su URL pública.
+ * Sube la imagen al bucket y devuelve su URL pública, SIN tocar el perfil.
  *
  * El PUT va con `fetch` directo y NO con nuestro `http`: la URL firmada ya
  * lleva su propia autorización dentro, y mandarle además nuestra cabecera
@@ -102,8 +102,14 @@ interface PresignedUpload {
  *
  * El `Content-Type` tiene que ser exactamente el que se declaró al firmar,
  * porque va incluido en la firma.
+ *
+ * Se separó del avatar para poder subir la foto de un perfil de ARTISTA,
+ * que no es la misma imagen: alguien puede llamarse Ana y su proyecto
+ * "Dúo Sombra". Antes, crear el perfil reutilizaba el avatar del usuario
+ * y, si no tenía, una URL de archive.org escrita a mano en el código — el
+ * artista acababa con la foto de un desconocido.
  */
-export async function uploadAvatar(image: PickedImage): Promise<string> {
+export async function uploadImageToBucket(image: PickedImage): Promise<string> {
   const { upload } = await http.post<{ upload: PresignedUpload }>('/auth/me/avatar/presign', {
     contentType: image.contentType,
   });
@@ -121,9 +127,16 @@ export async function uploadAvatar(image: PickedImage): Promise<string> {
     throw new Error(`No se pudo subir la foto (${response.status}).`);
   }
 
+  return upload.publicUrl;
+}
+
+/** Sube la imagen y además la guarda como avatar de la cuenta. */
+export async function uploadAvatar(image: PickedImage): Promise<string> {
+  const publicUrl = await uploadImageToBucket(image);
+
   // Sólo ahora se guarda en el perfil: si se guardara antes de confirmar la
   // subida, un fallo a mitad dejaría al usuario con un avatar roto.
-  await http.patch('/auth/me', { avatarUrl: upload.publicUrl });
+  await http.patch('/auth/me', { avatarUrl: publicUrl });
 
-  return upload.publicUrl;
+  return publicUrl;
 }

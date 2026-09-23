@@ -8,7 +8,14 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useArtistStore, toast } from '../../src/store';
-import { uploadTrack, UPLOAD_STEPS, type LocalFile, type UploadStep } from '../../src/services';
+import {
+  uploadTrack,
+  UPLOAD_STEPS,
+  describeAudioRejection,
+  resolveAudioType,
+  type LocalFile,
+  type UploadStep,
+} from '../../src/services';
 import { AppBar, Button } from '../../src/components';
 import { useTheme, useThemedStyles, spacing, typography, radius, type Theme } from '../../src/theme';
 
@@ -33,13 +40,19 @@ export default function ReleaseTrackScreen() {
     const asset = result.assets[0];
     if (!asset) return;
 
+    // El selector enseña todo lo que el teléfono considera audio, que es más
+    // de lo que acepta el servidor. Se dice aquí, al elegirlo, y no después
+    // de haber empezado a subir un archivo que iba a ser rechazado.
+    const rechazo = describeAudioRejection(asset.name, asset.mimeType, asset.size);
+    if (rechazo) {
+      toast.error(rechazo);
+      return;
+    }
+
     setAudioAsset({
       uri: asset.uri,
       name: asset.name,
-      // Algunos proveedores de documentos no devuelven mimeType. Sin él el
-      // servidor rechaza el archivo, así que se cae a audio/mpeg, que cubre
-      // el caso más común.
-      mimeType: asset.mimeType ?? 'audio/mpeg',
+      mimeType: resolveAudioType(asset.name, asset.mimeType),
     });
     if (!title.trim()) setTitle(asset.name.replace(/\.[^/.]+$/, ''));
     Haptics.selectionAsync().catch(() => {});

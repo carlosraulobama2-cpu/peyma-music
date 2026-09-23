@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "peyma-music",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -27,7 +26,6 @@
         "backgroundColor": "#0A0A0A"
       },
       "package": "com.peyma.music",
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.WAKE_LOCK",
@@ -69,7 +67,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "http://localhost:3000/api",
       "router": {},
       "eas": {
         "projectId": "69b3887e-4cab-4937-92ad-a0377ba4340b"

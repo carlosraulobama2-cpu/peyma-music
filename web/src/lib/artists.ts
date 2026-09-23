@@ -84,8 +84,38 @@ export interface ArtistSummary {
  *
  * Usa el endpoint público de catálogo, no el del panel: un artista que sube
  * su canción no es administrador y `/admin/artists` le devolvería 403.
+ *
+ * Sólo lo usa un administrador, que sí puede publicar en nombre de
+ * cualquiera. Un creador normal sube a SU perfil (`fetchMyArtistProfile`):
+ * ofrecerle la lista entera lo empujaba a elegir un artista ajeno, y el
+ * backend ahora se lo rechaza.
  */
 export async function fetchArtists(): Promise<ArtistSummary[]> {
   const { artists } = await http.get<{ artists: ArtistSummary[] }>("/artists?limit=100");
   return artists;
+}
+
+/** El perfil de artista de quien pregunta, o `null` si todavía no tiene. */
+export async function fetchMyArtistProfile(): Promise<ArtistSummary | null> {
+  const { artist } = await http.get<{ artist: ArtistSummary | null }>("/artists/me/profile");
+  return artist;
+}
+
+export interface CreateArtistInput {
+  name: string;
+  imageUrl: string;
+  bio?: string;
+  genres?: string[];
+}
+
+/**
+ * Crea el perfil de artista de quien llama y lo deja como dueño.
+ *
+ * El backend promueve la cuenta a ARTIST en la misma operación, así que
+ * después de esto hace falta refrescar la sesión para que la interfaz vea
+ * el rol nuevo.
+ */
+export async function createArtistProfile(input: CreateArtistInput): Promise<ArtistSummary> {
+  const { artist } = await http.post<{ artist: ArtistSummary }>("/artists", input);
+  return artist;
 }

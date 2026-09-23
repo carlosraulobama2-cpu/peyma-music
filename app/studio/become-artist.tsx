@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable } from 'react-native';
+import { View, Text, TextInput, ScrollView, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useArtistStore, useAuthStore, toast } from '../../src/store';
 import { api } from '../../src/services';
+import { pickFromLibrary, uploadImageToBucket, PermissionDeniedError, type PickedImage } from '../../src/services/avatarUpload';
 import { AppBar, Button } from '../../src/components';
 import { useTheme, useThemedStyles, spacing, typography, radius, type Theme } from '../../src/theme';
 
@@ -23,6 +24,29 @@ export default function BecomeArtistScreen() {
   const [name, setName] = useState(user?.displayName ?? '');
   const [bio, setBio] = useState('');
   const [genres, setGenres] = useState<string[]>([]);
+  const [foto, setFoto] = useState<PickedImage | null>(null);
+
+  /**
+   * Foto del artista.
+   *
+   * Es una imagen propia y no el avatar de la cuenta: alguien puede
+   * llamarse Ana y su proyecto "Dúo Sombra". Si no eligen ninguna se cae
+   * al avatar, que al menos es suyo; lo que ya no se hace es usar una URL
+   * de archive.org escrita en el código, que le ponía al artista la foto
+   * de un desconocido.
+   */
+  const elegirFoto = async () => {
+    try {
+      const elegida = await pickFromLibrary();
+      if (elegida) setFoto(elegida);
+    } catch (error) {
+      if (error instanceof PermissionDeniedError) {
+        toast.error('Necesitamos permiso para acceder a tus fotos.');
+        return;
+      }
+      toast.error('No se pudo abrir la galería.');
+    }
+  };
 
   const toggleGenre = (genre: string) => {
     setGenres((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
@@ -36,8 +60,17 @@ export default function BecomeArtistScreen() {
       return;
     }
 
+    if (!foto && !user?.avatarUrl) {
+      toast.error('Elegí una foto para tu perfil de artista.');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      // La foto va primero: el backend exige `imageUrl` al crear, así que
+      // si la subida falla no llega a crearse un perfil a medias.
+      const imageUrl = foto ? await uploadImageToBucket(foto) : user!.avatarUrl!;
+
       /**
        * El perfil se crea EN EL SERVIDOR.
        *
@@ -48,8 +81,7 @@ export default function BecomeArtistScreen() {
        */
       const artist = await api.createArtistProfile({
         name: name.trim(),
-        // Sin foto elegida se usa la del usuario; el backend la exige.
-        imageUrl: user?.avatarUrl ?? 'https://archive.org/services/img/badpanda006',
+        imageUrl,
         ...(bio.trim() ? { bio: bio.trim() } : {}),
         genres,
       });
@@ -88,6 +120,22 @@ export default function BecomeArtistScreen() {
           Publica tus canciones y accede a un panel con tus oyentes, seguidores y de dónde te escuchan — como
           Spotify for Artists.
         </Text>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Foto del artista</Text>
+          <Pressable onPress={elegirFoto} accessibilityRole="button" style={styles.photoRow}>
+            {foto || user?.avatarUrl ? (
+              <Image source={{ uri: foto?.uri ?? user!.avatarUrl! }} style={styles.photo} />
+            ) : (
+              <View style={[styles.photo, styles.photoEmpty]}>
+                <Ionicons name="camera" size={22} color={colors.text.secondary} />
+              </View>
+            )}
+            <Text style={styles.photoHint}>
+              {foto ? 'Cambiar foto' : user?.avatarUrl ? 'Usar otra (ahora se usa la de tu cuenta)' : 'Elegir una foto'}
+            </Text>
+          </Pressable>
+        </View>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Nombre artístico</Text>
@@ -167,6 +215,29 @@ const makeStyles = ({ colors }: Theme) => ({
   inputGroup: {
     gap: spacing.sm,
     marginBottom: spacing.xl,
+  },
+  photoRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.lg,
+  },
+  photo: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.surface[300],
+  },
+  photoEmpty: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 1,
+    borderColor: colors.surface[400],
+  },
+  photoHint: {
+    color: colors.brand[500],
+    fontFamily: typography.family.medium,
+    fontSize: typography.size.sm,
+    flex: 1,
   },
   label: {
     color: colors.text.secondary,

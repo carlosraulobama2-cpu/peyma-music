@@ -73,6 +73,22 @@ export interface AdminArtistDetail {
 
 export const fetchArtistDetail = (id: string) => http.get<AdminArtistDetail>(`/admin/artists/${id}`);
 
+/**
+ * Asigna o retira la titularidad de un artista.
+ *
+ * Existe porque subir una canción ya no se apropia de un artista sin dueño
+ * (antes sí, y cualquier cuenta nueva podía quedarse con un artista del
+ * catálogo). Reclamar un perfil importado pasa ahora por aquí, que es
+ * donde hay con qué comprobar quién es quién.
+ *
+ * `null` retira el dueño y devuelve el artista al catálogo común.
+ */
+export const setArtistOwner = (artistId: string, ownerEmail: string | null) =>
+  http.patch<{ artist: { id: string; name: string; owner: { id: string; email: string; displayName: string } | null } }>(
+    `/admin/artists/${artistId}/owner`,
+    { ownerEmail },
+  );
+
 /** Bloquea o restaura varias canciones de golpe. Reversible. */
 export const bulkBlockTracks = (artistId: string, trackIds: string[], isBlocked: boolean, reason?: string) =>
   http.post<{ updated: number }>(`/admin/artists/${artistId}/tracks/block`, {

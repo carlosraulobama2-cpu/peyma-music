@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, BadgeCheck, ShieldOff, ShieldCheck, Trash2, Flag, Play } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, ShieldOff, ShieldCheck, Trash2, Flag, Play, UserCheck } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CoverImage } from '../components/CoverImage';
@@ -8,6 +8,7 @@ import {
   fetchArtistDetail,
   bulkBlockTracks,
   bulkDeleteTracks,
+  setArtistOwner,
   type AdminArtistDetail,
   type AdminArtistTrack,
 } from '../lib/artists';
@@ -143,11 +144,15 @@ export function ArtistDetailPage() {
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-bold text-danger">BLOQUEADO</span>
             )}
           </p>
-          {artist.owner && (
-            <p className="mt-1 text-sm text-muted">
-              {artist.owner.displayName} · {artist.owner.email}
-            </p>
-          )}
+          {/* La titularidad es lo que decide quién puede subirle canciones,
+              así que se muestra siempre — también cuando no hay dueño, que
+              es el caso que hay que resolver. */}
+          <OwnerRow
+            artistId={artist.id}
+            owner={artist.owner}
+            onChanged={load}
+            onError={setError}
+          />
           {denunciasPendientes > 0 && (
             <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-amber-400">
               <Flag size={14} aria-hidden />
@@ -282,6 +287,132 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div>
       <p className="text-xl font-extrabold tabular-nums">{value.toLocaleString('es')}</p>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+    </div>
+  );
+}
+
+/**
+ * Quién es el dueño del artista, y cómo cambiarlo.
+ *
+ * Es la única vía para reclamar un perfil del catálogo desde que subir una
+ * canción dejó de apropiárselo. Antes, el primero que intentaba subirle
+ * algo a un artista importado se quedaba con él sin probar nada; ahora la
+ * decisión es de un administrador, aquí.
+ *
+ * Se pide el CORREO y no un identificador: quien reclama un perfil escribe
+ * desde su correo, y hacer que alguien busque un cuid antes de poder
+ * actuar sólo añade un paso donde equivocarse.
+ */
+function OwnerRow({
+  artistId,
+  owner,
+  onChanged,
+  onError,
+}: {
+  artistId: string;
+  owner: { id: string; email: string; displayName: string } | null;
+  onChanged: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [correo, setCorreo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const aplicar = async (valor: string | null) => {
+    setGuardando(true);
+    onError(null);
+    try {
+      await setArtistOwner(artistId, valor);
+      setEditando(false);
+      setCorreo('');
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo cambiar la titularidad.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (editando) {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (correo.trim()) void aplicar(correo.trim());
+        }}
+        className="mt-2 flex flex-wrap items-center gap-2"
+      >
+        <input
+          type="email"
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          autoFocus
+          required
+          placeholder="correo de la cuenta"
+          className="w-64 rounded-lg border border-white/15 bg-black/25 px-3 py-1.5 text-sm outline-none focus:border-brand"
+        />
+        <button
+          type="submit"
+          disabled={guardando || correo.trim() === ''}
+          className="rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-black transition-colors hover:bg-brand-hover disabled:opacity-40"
+        >
+          {guardando ? 'Asignando…' : 'Asignar'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditando(false);
+            setCorreo('');
+          }}
+          className="rounded-full border border-white/20 px-4 py-1.5 text-xs font-semibold transition-colors hover:border-white"
+        >
+          Cancelar
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+      {owner ? (
+        <>
+          <UserCheck size={14} className="shrink-0 text-muted" aria-hidden />
+          <span className="text-sm text-muted">
+            {owner.displayName} · {owner.email}
+          </span>
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="text-xs font-semibold text-muted underline transition-colors hover:text-foreground"
+          >
+            Cambiar
+          </button>
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => void aplicar(null)}
+            className="text-xs font-semibold text-muted underline transition-colors hover:text-danger disabled:opacity-40"
+          >
+            Quitar
+          </button>
+        </>
+      ) : (
+        <>
+          {/* Sin dueño es un estado que hay que ver, no un hueco: es el que
+              impide que su artista real pueda subir nada. */}
+          <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-400">
+            SIN DUEÑO
+          </span>
+          <span className="text-sm text-muted">Nadie puede subirle canciones todavía.</span>
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="text-xs font-semibold text-brand underline transition-colors hover:text-brand-hover"
+          >
+            Asignar dueño
+          </button>
+        </>
+      )}
     </div>
   );
 }

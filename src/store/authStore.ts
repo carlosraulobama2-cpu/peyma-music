@@ -117,7 +117,28 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       user: null,
       isAuthenticated: false,
-      isLoading: false,
+      /**
+       * Arranca en `true`, y ese detalle es la diferencia entre entrar y
+       * que la app te eche.
+       *
+       * Al abrir la app hay una sesión guardada que todavía NO se ha
+       * comprobado, así que el estado real de partida es "comprobando", no
+       * "no hay sesión". Con `false`, en el primer render `isLoading` era
+       * falso e `isAuthenticated` también, y eso disparaba dos cosas a la
+       * vez antes de que `loadStoredSession` llegara a ejecutarse:
+       *
+       *  - el guardia de rutas (`useAuthGate` en app/_layout.tsx) daba la
+       *    sesión por inexistente y hacía `router.replace('/login')`;
+       *  - la pantalla de arranque se daba por lista, montaba la app, y
+       *    volvía a esconderse en cuanto `loadStoredSession` ponía
+       *    `isLoading: true` — un montaje y desmontaje que en el teléfono
+       *    se ve como que la app se sale sola.
+       *
+       * Todos los caminos de `loadStoredSession` lo dejan en `false` al
+       * terminar (sin token, 401, error de red y éxito), así que no hay
+       * forma de quedarse colgado en la pantalla de carga.
+       */
+      isLoading: true,
       isSubmitting: false,
       token: null,
 
@@ -212,6 +233,43 @@ export const useAuthStore = create<AuthStore>()(
 
       loadStoredSession: async () => {
         set({ isLoading: true });
+
+        /**
+         * Esperar a que `persist` termine de rehidratar antes de decidir.
+         *
+         * El token vive en SecureStore y el usuario cacheado en
+         * AsyncStorage, y las dos lecturas son asíncronas e independientes.
+         * Sin esta espera, el `catch` de abajo podía ejecutarse con
+         * `state.user` todavía en `null` aunque hubiera un usuario guardado:
+         * abrir la app sin cobertura dejaba `isAuthenticated` en false y te
+         * echaba al login, que es justo lo que ese `catch` intenta evitar.
+         */
+        if (!useAuthStore.persist.hasHydrated()) {
+          await new Promise<void>((resolve) => {
+            /**
+             * Con tope de tiempo, y no una espera abierta.
+             *
+             * `onFinishHydration` sólo avisa de rehidrataciones FUTURAS: si
+             * terminara justo entre el `hasHydrated()` de arriba y esta
+             * suscripción, el aviso ya habría pasado y la promesa no se
+             * resolvería nunca. Eso dejaría `isLoading` en true para
+             * siempre y la app clavada en la pantalla de carga — el mismo
+             * síntoma que se está arreglando. Leer el usuario cacheado es
+             * una mejora, no un requisito: si tarda, se sigue sin él.
+             */
+            const timer = setTimeout(() => {
+              unsubscribe();
+              resolve();
+            }, 1500);
+
+            const unsubscribe = useAuthStore.persist.onFinishHydration(() => {
+              clearTimeout(timer);
+              unsubscribe();
+              resolve();
+            });
+          });
+        }
+
         const token = await getAuthToken().catch(() => null);
         if (!token) {
           set({ isAuthenticated: false, token: null, isLoading: false });

@@ -13,6 +13,7 @@ import { authMiddleware, authFromHeaderOrQuery, requireRole, type AuthRequest } 
 import {
   reviewTrackSchema,
   blockArtistSchema,
+  artistOwnerSchema,
   blockPlaylistSchema,
   importUrlSchema,
   confirmImportSchema,
@@ -31,7 +32,7 @@ import {
   blockTrackSchema,
   reorderPromotionsSchema,
 } from '../schemas/validation';
-import { NotFoundError, BadRequestError } from '../utils/errors';
+import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { enqueue, retryJob } from '../services/jobQueue';
 import { QUALITY_PROFILES } from '../services/transcode';
 import { isFfmpegAvailable } from '../services/ffmpeg';
@@ -341,6 +342,80 @@ router.patch('/artists/:id/block', async (req: AuthRequest, res: Response) => {
 
   // Afecta a todas las pistas del artista y aquí no tenemos la lista.
   invalidateAllTrackAccess();
+  res.json({ artist: updated });
+});
+
+/**
+ * Asigna (o retira) la titularidad de un artista.
+ *
+ * Es la contrapartida de haber cerrado la apropiación automática en
+ * `POST /uploads`: los artistas importados del catálogo nacen sin dueño, y
+ * antes se los quedaba quien primero intentara subirles algo. Ahora la
+ * decisión pasa por aquí, que es donde hay con qué comprobar que quien
+ * reclama es quien dice ser.
+ *
+ * Se identifica por CORREO y no por id de usuario: quien reclama un perfil
+ * escribe desde su correo, y pedirle a un administrador que averigüe un
+ * cuid antes de poder actuar sólo añade un paso donde equivocarse.
+ *
+ * Asignar dueño promueve la cuenta a ARTIST si era un oyente, porque el
+ * rol es lo que le habilita su panel de creador. Retirar la titularidad NO
+ * degrada el rol: la persona puede tener otros perfiles, y quitarle el
+ * acceso a todos por soltar uno sería un efecto colateral silencioso.
+ */
+router.patch('/artists/:id/owner', async (req: AuthRequest, res: Response) => {
+  const { id } = idParamSchema.parse(req.params);
+  const { ownerEmail } = artistOwnerSchema.parse(req.body);
+
+  const artist = await prisma.artist.findUnique({ where: { id }, select: { id: true, name: true, ownerId: true } });
+  if (!artist) throw new NotFoundError('Artista');
+
+  // `null` retira la titularidad y devuelve el artista al catálogo común.
+  if (ownerEmail === null) {
+    const updated = await prisma.artist.update({
+      where: { id },
+      data: { ownerId: null },
+      include: { owner: { select: { id: true, email: true, displayName: true } } },
+    });
+    await record(req, { action: 'artist.owner.clear', targetType: 'artist', targetId: id, targetLabel: artist.name });
+    res.json({ artist: updated });
+    return;
+  }
+
+  const owner = await prisma.user.findUnique({ where: { email: ownerEmail }, select: { id: true, email: true, role: true } });
+  if (!owner) throw new NotFoundError(`Usuario con el correo ${ownerEmail}`);
+
+  // Un usuario sólo puede tener un perfil de artista (misma regla que
+  // `POST /artists`). Sin esta comprobación, asignarle un segundo dejaría
+  // `GET /artists/me/profile` devolviendo uno de los dos al azar.
+  const otro = await prisma.artist.findFirst({
+    where: { ownerId: owner.id, id: { not: id } },
+    select: { name: true },
+  });
+  if (otro) {
+    throw new ConflictError(`${owner.email} ya es dueño de "${otro.name}". Un usuario sólo puede tener un perfil de artista.`);
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const artista = await tx.artist.update({
+      where: { id },
+      data: { ownerId: owner.id },
+      include: { owner: { select: { id: true, email: true, displayName: true } } },
+    });
+    if (owner.role === 'USER') {
+      await tx.user.update({ where: { id: owner.id }, data: { role: 'ARTIST' } });
+    }
+    return artista;
+  });
+
+  await record(req, {
+    action: 'artist.owner.assign',
+    targetType: 'artist',
+    targetId: id,
+    targetLabel: artist.name,
+    metadata: { nuevoDueno: owner.email, duenoAnterior: artist.ownerId },
+  });
+
   res.json({ artist: updated });
 });
 

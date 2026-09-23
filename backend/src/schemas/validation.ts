@@ -305,6 +305,21 @@ export const blockArtistSchema = z.object({
   isBlocked: z.boolean(),
 });
 
+/**
+ * Titularidad de un artista (panel admin).
+ *
+ * Por correo y no por id de usuario: quien reclama un perfil escribe desde
+ * su correo, y obligar a buscar un cuid antes de poder actuar sólo añade un
+ * paso donde equivocarse.
+ *
+ * `null` es un valor válido y significa "retirar el dueño". Se distingue de
+ * "no mandé el campo" para que retirar la titularidad sea una acción
+ * explícita y no el efecto de un cuerpo mal formado.
+ */
+export const artistOwnerSchema = z.object({
+  ownerEmail: z.string().trim().toLowerCase().email('Correo electrónico inválido').nullable(),
+});
+
 /* --- Verificación, secciones editoriales y usuarios (panel admin) --- */
 
 export const verifyArtistSchema = z.object({ isVerified: z.boolean() });

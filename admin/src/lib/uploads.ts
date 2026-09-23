@@ -18,7 +18,13 @@ export function createUpload(artistId: string, title: string): Promise<{ upload:
 export function uploadAudio(uploadId: string, file: File, durationSeconds: number): Promise<{ upload: UploadDraft }> {
   const form = new FormData();
   form.append('audio', file);
-  form.append('durationSeconds', String(Math.round(durationSeconds)));
+  // Sólo si se pudo leer. El backend valida `positive()`, así que mandar el 0
+  // que devuelve `readAudioDuration` cuando el navegador no entiende el
+  // formato tumbaba la subida entera con un 400 — justo lo contrario de lo
+  // que ese 0 promete. La web y la app ya lo filtraban; esto faltaba aquí.
+  if (durationSeconds > 0) {
+    form.append('durationSeconds', String(Math.round(durationSeconds)));
+  }
   return uploadFile<{ upload: UploadDraft }>(`/uploads/${uploadId}/audio`, form);
 }
 
@@ -50,7 +56,8 @@ export function readAudioDuration(file: File): Promise<number> {
       cleanup();
       resolve(duration);
     });
-    // Si el navegador no puede leer los metadatos, se sube con 0 en vez de fallar.
+    // Si el navegador no puede leer los metadatos, se devuelve 0 y `uploadAudio`
+    // no manda el campo; el backend la saca del archivo con ffmpeg.
     audio.addEventListener('error', () => {
       cleanup();
       resolve(0);

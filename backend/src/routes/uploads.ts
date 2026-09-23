@@ -15,6 +15,9 @@
  */
 import { Router, type Response } from 'express';
 import multer from 'multer';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { authMiddleware, type AuthRequest } from '../middleware/auth';
@@ -38,7 +41,7 @@ import {
 } from '../services/objectStorage';
 import { audioAnalyzer, type AudioAnalysisResult } from '../services/audioAnalysis';
 import { enqueue } from '../services/jobQueue';
-import { isFfmpegAvailable } from '../services/ffmpeg';
+import { isFfmpegAvailable, probeDurationSeconds } from '../services/ffmpeg';
 import { z } from 'zod';
 
 const router = Router();
@@ -48,11 +51,53 @@ const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_AUDIO_BYTES = 40 * 1024 * 1024; // 40MB — de sobra para un track comprimido
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Tipo de contenido por extensión, para cuando el cliente no sabe decirlo.
+ *
+ * En Windows el navegador saca `file.type` del registro del sistema
+ * (`HKEY_CLASSES_ROOT.mp3Content Type`), una clave que pisa cualquier
+ * reproductor que se instale y que en muchos equipos falta. Cuando falta, un
+ * MP3 perfectamente válido llega aquí sin tipo o como
+ * `application/octet-stream` y el filtro lo tiraba, con el mensaje inútil de
+ * "el formato no es válido". Lo mismo con las portadas.
+ *
+ * Los clientes ya lo corrigen por su cuenta, pero esto tiene que aguantar
+ * igual: el servidor recibe subidas de la web, del panel, de la app y de
+ * curl, y la regla de qué se admite vive aquí.
+ */
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+};
+
+/**
+ * ¿Se admite este archivo? Si el tipo declarado no sirve pero la extensión
+ * sí, corrige `file.mimetype` para que el resto del camino vea un tipo bueno.
+ */
+function acceptByTypeOrExtension(file: Express.Multer.File, allowed: Set<string>): boolean {
+  if (allowed.has(file.mimetype)) return true;
+
+  const dot = file.originalname.lastIndexOf('.');
+  if (dot < 0) return false;
+  const guess = MIME_BY_EXTENSION[file.originalname.slice(dot).toLowerCase()];
+  if (!guess || !allowed.has(guess)) return false;
+
+  file.mimetype = guess;
+  return true;
+}
+
 const audioUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_AUDIO_BYTES },
   fileFilter: (_req, file, cb) => {
-    cb(null, AUDIO_MIME_TYPES.has(file.mimetype));
+    cb(null, acceptByTypeOrExtension(file, AUDIO_MIME_TYPES));
   },
 });
 
@@ -60,9 +105,44 @@ const coverUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_COVER_BYTES },
   fileFilter: (_req, file, cb) => {
-    cb(null, IMAGE_MIME_TYPES.has(file.mimetype));
+    cb(null, acceptByTypeOrExtension(file, IMAGE_MIME_TYPES));
   },
 });
+
+/**
+ * Duración leída del propio archivo, para cuando el cliente no la manda.
+ *
+ * La duración la venía poniendo quien subía: el navegador la lee con un
+ * `<audio>` y la manda en el formulario. Eso deja tres agujeros — la app
+ * móvil no la manda nunca, ningún navegador sabe leer los metadatos de
+ * todos los formatos, y un cliente que no sea el nuestro puede no mandarla
+ * — y el resultado es un track publicado con `duration: 0`: barra de
+ * progreso muerta y "0:00" en todas las listas.
+ *
+ * La duración es una propiedad del archivo, no del cliente, así que se saca
+ * aquí. Devuelve null si no hay ffmpeg (entorno sin binario) o si el archivo
+ * no se deja leer: es un metadato, y perderlo no justifica tirar una subida
+ * que por lo demás está bien.
+ */
+async function probeDurationFromBuffer(buffer: Buffer, originalName: string): Promise<number | null> {
+  if (!isFfmpegAvailable()) return null;
+
+  const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'peyma-duracion-'));
+  // Con su extensión: ffmpeg elige el demuxer por el contenido, pero con un
+  // nombre coherente acierta antes y evita falsos negativos. Lo que llega es
+  // una URL, así que se le quita la query — `?v=2` acabaría dentro del nombre
+  // del archivo temporal, y en Windows `?` ni siquiera es un nombre válido.
+  const extension = path.extname(originalName.split('?')[0] ?? '');
+  const filePath = path.join(workDir, `audio${/^.[a-z0-9]{1,5}$/i.test(extension) ? extension : '.bin'}`);
+  try {
+    await fs.writeFile(filePath, buffer);
+    return await probeDurationSeconds(filePath);
+  } catch {
+    return null;
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 const UPLOAD_WITH_DETAILS = {
   include: {
@@ -123,9 +203,27 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     if (artist.ownerId && artist.ownerId !== req.user!.id) {
       throw new ForbiddenError('Este perfil de artista pertenece a otro usuario');
     }
+    /**
+     * Un artista SIN dueño no se puede reclamar desde aquí.
+     *
+     * Antes, la primera subida a un perfil sin `ownerId` se lo asignaba a
+     * quien subía. La intención era buena (que el artista real recupere su
+     * ficha de catálogo), pero el efecto era que cualquier cuenta recién
+     * creada se apropiaba de un artista importado — con sólo empezar una
+     * subida a su nombre y sin probar nada. A partir de ahí era el dueño y
+     * el artista de verdad recibía un 403 en su propio perfil.
+     *
+     * La titularidad la asigna ahora un administrador desde el panel
+     * (`PATCH /admin/artists/:id/owner`), que es donde hay con qué
+     * comprobar quién es quién. El código deja que el cliente distinga este
+     * caso y explique cómo pedirlo.
+     */
     if (!artist.ownerId) {
-      // Primera subida a un artista de catálogo/sin dueño: lo reclama quien sube.
-      await prisma.artist.update({ where: { id: artist.id }, data: { ownerId: req.user!.id } });
+      throw new AppError(
+        `"${artist.name}" es un artista del catálogo y todavía no tiene dueño. Pedí a un administrador que te lo asigne antes de subir.`,
+        403,
+        'artist_unclaimed',
+      );
     }
   }
 
@@ -263,9 +361,17 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res: Respon
     // descarga del bucket. Antes sólo sabía resolver rutas locales.
     const buffer = await storageService.readFile(upload.audioUrl);
 
+    // Si el cliente no pudo decir cuánto dura, se saca del archivo. Aquí y
+    // no en `POST /:id/audio` porque este paso ya tiene el archivo entero en
+    // memoria: hacerlo antes obligaría a leerlo dos veces.
+    const durationSeconds =
+      upload.durationSeconds && upload.durationSeconds > 0
+        ? upload.durationSeconds
+        : Math.round((await probeDurationFromBuffer(buffer, upload.audioUrl)) ?? 0);
+
     const result = await audioAnalyzer.analyze({
       buffer,
-      durationSeconds: upload.durationSeconds ?? 0,
+      durationSeconds,
       // El analizador sólo usa esto para mirar la extensión, así que la URL
       // vale igual que una ruta y evita depender de que exista una.
       originalName: upload.audioUrl,
@@ -276,6 +382,9 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res: Respon
       data: {
         status: 'PENDING_REVIEW',
         analysisDraft: result as unknown as object,
+        // Se guarda para que `publish` la copie al Track: es el único sitio
+        // del que sale `Track.duration`.
+        durationSeconds: durationSeconds > 0 ? durationSeconds : null,
         // Sugerencia del análisis como valor por defecto — el creador la
         // puede pisar en el PATCH de revisión antes de publicar.
         genreOverride: upload.genreOverride ?? result.suggestedGenre,

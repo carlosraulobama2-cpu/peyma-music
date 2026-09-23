@@ -17,6 +17,7 @@ import {
   GenreCarousel,
 } from '../../src/components/home';
 import { LocationConsentCard } from '../../src/components/LocationConsentCard';
+import { EmptyState } from '../../src/components';
 import { GENRES } from '../../src/types/music';
 import { useTheme, useThemedStyles, spacing, typography, radius, layout, type Theme } from '../../src/theme';
 import { api, fetchNotifications, type HomeFeed } from '../../src/services';
@@ -64,7 +65,7 @@ export default function HomeScreen() {
     extrapolate: 'clamp',
   });
 
-  const { data: home, isLoading: homeLoading } = useAsyncData<HomeFeed>(
+  const { data: home, isLoading: homeLoading, error: homeError } = useAsyncData<HomeFeed>(
     (signal) => api.getHomeFeed({ signal }),
     [refreshKey],
     'No pudimos cargar Inicio.',
@@ -120,6 +121,28 @@ export default function HomeScreen() {
       </Pressable>
 
       <LocationConsentCard />
+
+      {/*
+        Fallo de carga a la vista, y con salida.
+
+        Antes este error se descartaba: `useAsyncData` ya lo devolvía y la
+        pantalla sólo leía `data` e `isLoading`. Con la API caída quedaban
+        filas vacías indefinidamente y sin una palabra de explicación, que
+        desde fuera se ve como "la app no funciona" en vez de "no hay
+        servidor".
+
+        Sólo se muestra si además NO hay datos: si ya había una portada
+        cargada, un fallo al refrescar no debe taparla.
+      */}
+      {homeError && !home && (
+        <EmptyState
+          icon="cloud-offline-outline"
+          title="No pudimos conectar"
+          description={`${homeError} Revisá tu conexión; si el problema sigue, puede que el servidor no esté disponible.`}
+          actionLabel="Reintentar"
+          onAction={onRefresh}
+        />
+      )}
 
       <HeroRow items={home?.hero ?? []} isLoading={homeLoading} />
 

@@ -7,6 +7,7 @@ import { useAuth } from "../../../lib/AuthProvider";
 import { http } from "../../../lib/httpClient";
 import { CoverImage } from "../../../components/CoverImage";
 import { uploadAvatar } from "../../../lib/avatarUpload";
+import { IMAGE_ACCEPT } from "../../../lib/fileTypes";
 import { TERMS, PRIVACY, TERMS_UPDATED_LABEL } from "../../../lib/legal";
 
 /**
@@ -172,7 +173,7 @@ export default function ProfilePage() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept={IMAGE_ACCEPT}
           capture="user"
           onChange={onPickFile}
           className="hidden"

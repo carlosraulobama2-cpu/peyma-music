@@ -68,7 +68,22 @@ export function useTrackPlayer(): true {
 
     syncInitialState();
 
-    const subscriptions = [
+    /**
+     * Suscribirse puede lanzar si el módulo nativo no quedó registrado.
+     *
+     * Pasa con `react-native-track-player` 4.1.2 bajo la Nueva Arquitectura,
+     * que este proyecto tiene activada porque la exige Reanimated 4. Sin
+     * este try, el throw ocurre dentro del efecto y sube hasta el
+     * ErrorBoundary: la app entera se cambia por la pantalla de error, sólo
+     * porque no hay reproductor.
+     *
+     * Con él, quien abra la app puede entrar, ver su biblioteca y cerrar
+     * sesión; lo único que no va es el audio. Que es exactamente lo que no
+     * va, y no tiene por qué llevarse por delante el resto.
+     */
+    let subscriptions: { remove: () => void }[] = [];
+    try {
+      subscriptions = [
       TrackPlayer.addEventListener(
         Event.PlaybackProgressUpdated,
         (event: PlaybackProgressUpdatedEvent) => {
@@ -120,7 +135,10 @@ export function useTrackPlayer(): true {
         setPlaybackError(message);
         toast.error(message);
       }),
-    ];
+      ];
+    } catch (error) {
+      console.error('[useTrackPlayer] No se pudo suscribir a los eventos del reproductor:', error);
+    }
 
     return () => {
       mounted = false;
@@ -132,9 +150,15 @@ export function useTrackPlayer(): true {
   }, []);
 
   useEffect(() => {
-    TrackPlayer.setRepeatMode(REPEAT_TO_NATIVE[repeatMode]).catch((error) => {
-      console.error('[useTrackPlayer] Error al fijar el modo de repetición:', error);
-    });
+    // `try` además del `catch` de la promesa: sin módulo nativo el fallo es
+    // síncrono, no una promesa rechazada, y se escaparía por encima.
+    try {
+      TrackPlayer.setRepeatMode(REPEAT_TO_NATIVE[repeatMode]).catch((error) => {
+        console.error('[useTrackPlayer] Error al fijar el modo de repetición:', error);
+      });
+    } catch (error) {
+      console.error('[useTrackPlayer] El reproductor no está disponible:', error);
+    }
   }, [repeatMode]);
 
   return true;

@@ -1,6 +1,7 @@
 "use client";
 
 import { http } from "./httpClient";
+import { contentTypeOf } from "./fileTypes";
 
 /**
  * Foto de perfil: del archivo del usuario al bucket, sin pasar por la API.
@@ -31,7 +32,10 @@ interface PresignedUpload {
 }
 
 export function describeRejection(file: File): string | null {
-  if (!ALLOWED_TYPES.has(file.type)) {
+  // Por la extensión y no por `file.type`: en Windows el navegador saca ese
+  // tipo del registro del sistema, que a menudo no tiene entrada para .jpg o
+  // .webp, y entonces un archivo válido llegaba aquí sin tipo y se rechazaba.
+  if (!ALLOWED_TYPES.has(contentTypeOf(file))) {
     return "Formato no admitido. Usa JPG, PNG o WebP.";
   }
   if (file.size > MAX_BYTES) {
@@ -40,13 +44,49 @@ export function describeRejection(file: File): string | null {
   return null;
 }
 
+/**
+ * Sube una imagen al bucket y devuelve su URL pública, SIN tocar el perfil.
+ *
+ * Es la foto del perfil de artista, que no es lo mismo que el avatar de la
+ * cuenta: una persona puede llamarse Ana y su proyecto "Dúo Sombra". Antes
+ * la app resolvía esto reutilizando el avatar del usuario (y, si no tenía,
+ * una URL de archive.org escrita a mano), con lo que el artista heredaba
+ * una foto que no eligió.
+ *
+ * Aprovecha el mismo endpoint de URL firmada porque el bucket y las reglas
+ * de tipo y tamaño son los mismos; lo único que no hace es el `PATCH` final
+ * al perfil.
+ */
+export async function uploadImageToBucket(file: File): Promise<string> {
+  const rejection = describeRejection(file);
+  if (rejection) throw new Error(rejection);
+
+  const contentType = contentTypeOf(file);
+  const { upload } = await http.post<{ upload: PresignedUpload }>("/auth/me/avatar/presign", {
+    contentType,
+  });
+
+  const response = await fetch(upload.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: file,
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo subir la imagen (${response.status}).`);
+  }
+
+  return upload.publicUrl;
+}
+
 /** Sube la imagen y devuelve su URL pública, ya guardada en el perfil. */
 export async function uploadAvatar(file: File): Promise<string> {
   const rejection = describeRejection(file);
   if (rejection) throw new Error(rejection);
 
+  const contentType = contentTypeOf(file);
   const { upload } = await http.post<{ upload: PresignedUpload }>("/auth/me/avatar/presign", {
-    contentType: file.type,
+    contentType,
   });
 
   // `fetch` a pelo y no nuestro `http`: la URL firmada lleva su propia
@@ -54,7 +94,7 @@ export async function uploadAvatar(file: File): Promise<string> {
   // que la firma no cuadrara y el bucket rechazara la subida.
   const response = await fetch(upload.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": file.type },
+    headers: { "Content-Type": contentType },
     body: file,
   });
 

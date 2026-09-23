@@ -5,6 +5,13 @@ import { AdminShell } from '../components/AdminShell';
 import { ImportUrlModal } from '../components/ImportUrlModal';
 import { fetchArtists, type AdminArtist } from '../lib/artists';
 import { createUpload, uploadAudio, uploadCover, analyzeUpload, publishUpload, readAudioDuration } from '../lib/uploads';
+import {
+  AUDIO_ACCEPT,
+  IMAGE_ACCEPT,
+  takeFile,
+  describeAudioRejection,
+  describeCoverRejection,
+} from '../lib/fileTypes';
 
 /** Los pasos que realmente ejecuta el pipeline del backend, en orden. */
 const STEPS = ['Creando borrador', 'Subiendo audio', 'Subiendo portada', 'Analizando ritmo', 'Publicando'] as const;
@@ -22,6 +29,12 @@ export function UploadPage() {
   const [stepIndex, setStepIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ title: string; status: string } | null>(null);
+  /**
+   * Vacía los campos de archivo al terminar. Un `<input type="file">` no es
+   * controlado: poner el estado a null no borra lo que enseña el navegador,
+   * y quedaba el nombre del MP3 recién subido junto a un botón desactivado.
+   */
+  const [fileBatch, setFileBatch] = useState(0);
 
   useEffect(() => {
     fetchArtists()
@@ -59,6 +72,7 @@ export function UploadPage() {
       setTitle('');
       setAudio(null);
       setCover(null);
+      setFileBatch((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falló la subida.');
     } finally {
@@ -127,9 +141,10 @@ export function UploadPage() {
           <label className="flex flex-col gap-2 text-sm font-semibold">
             Audio (.mp3, .wav, .m4a, .ogg, .flac)
             <input
+              key={`audio-${fileBatch}`}
               type="file"
-              accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/flac"
-              onChange={(e) => setAudio(e.target.files?.[0] ?? null)}
+              accept={AUDIO_ACCEPT}
+              onChange={(e) => takeFile(e.target.files, describeAudioRejection, setAudio, setError)}
               required
               className="rounded-lg border border-white/15 bg-black/20 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
             />
@@ -138,9 +153,10 @@ export function UploadPage() {
           <label className="flex flex-col gap-2 text-sm font-semibold">
             Portada (.jpg, .png, .webp)
             <input
+              key={`portada-${fileBatch}`}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setCover(e.target.files?.[0] ?? null)}
+              accept={IMAGE_ACCEPT}
+              onChange={(e) => takeFile(e.target.files, describeCoverRejection, setCover, setError)}
               required
               className="rounded-lg border border-white/15 bg-black/20 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
             />
