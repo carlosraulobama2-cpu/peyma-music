@@ -32,7 +32,7 @@ services:
     # migración falla, el despliegue se marca fallido y Render mantiene la
     # versión anterior sirviendo. Puesto en el arranque, el contenedor
     # entraría en un ciclo de reinicios con la API caída.
-    buildCommand: npm install && npx prisma migrate deploy && npm run build
+    buildCommand: npm install --include=dev && npx prisma migrate deploy && npm run build
     startCommand: npm start
     healthCheckPath: /ready
     envVars:
@@ -99,7 +99,7 @@ services:
     region: ohio
     # Aquí NO se migra: lo hace peyma-api. Dos servicios corriendo
     # `migrate deploy` a la vez compiten por el mismo advisory lock.
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run worker
     envVars:
       - key: NODE_ENV
@@ -131,7 +131,7 @@ services:
     rootDir: web
     plan: starter
     region: ohio
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -153,7 +153,7 @@ services:
     name: peyma-admin
     runtime: static
     rootDir: admin
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
     envVars:
       # Igual que arriba: Vite sustituye las VITE_* en tiempo de build.
