@@ -17,7 +17,25 @@ import {
   describeAudioRejection,
   describeCoverRejection,
 } from "../../../lib/fileTypes";
-import { uploadTrack, UPLOAD_STEPS, type UploadStep } from "../../../lib/uploadPipeline";
+import {
+  uploadTrack,
+  UPLOAD_STEPS,
+  CREDIT_ROLE_LABEL,
+  type UploadStep,
+  type CreditDraft,
+  type CreditRole,
+} from "../../../lib/uploadPipeline";
+
+/** Roles más comunes primero — el resto queda a un toque en el selector. */
+const CREDIT_ROLES: CreditRole[] = [
+  "FEATURED_ARTIST",
+  "PRODUCER",
+  "COMPOSER",
+  "WRITER",
+  "REMIXER",
+  "MIX_ENGINEER",
+  "MASTERING_ENGINEER",
+];
 
 /**
  * Subir una canción desde la web.
@@ -103,6 +121,20 @@ export default function UploadPage() {
   const [step, setStep] = useState<UploadStep | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [credits, setCredits] = useState<CreditDraft[]>([]);
+  const [creditRole, setCreditRole] = useState<CreditRole>("PRODUCER");
+  const [creditName, setCreditName] = useState("");
+
+  const addCredit = () => {
+    const name = creditName.trim();
+    if (!name) return;
+    setCredits((prev) => [...prev, { role: creditRole, name }]);
+    setCreditName("");
+  };
+
+  const removeCredit = (index: number) => {
+    setCredits((prev) => prev.filter((_, i) => i !== index));
+  };
   /**
    * Vacía los dos campos de archivo tras publicar.
    *
@@ -172,12 +204,14 @@ export default function UploadPage() {
         title: title.trim(),
         audio,
         cover,
+        credits,
         onStep: setStep,
       });
       setDone(track.title);
       setTitle("");
       setAudio(null);
       setCover(null);
+      setCredits([]);
       setTandaArchivos((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo subir la canción.");
@@ -285,6 +319,62 @@ export default function UploadPage() {
             className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
           />
         </label>
+
+        <div className="flex flex-col gap-2 text-sm font-semibold">
+          Créditos <span className="font-normal text-muted">(opcional — compositor, productor, artista invitado…)</span>
+          <div className="flex flex-wrap gap-1.5">
+            {CREDIT_ROLES.map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => setCreditRole(role)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  creditRole === role ? "bg-brand text-black" : "bg-white/10 text-muted hover:text-foreground"
+                }`}
+              >
+                {CREDIT_ROLE_LABEL[role]}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={creditName}
+              onChange={(e) => setCreditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCredit();
+                }
+              }}
+              placeholder="Nombre"
+              className="flex-1 rounded-lg border border-white/15 bg-black/25 px-4 py-2.5 text-sm font-normal outline-none focus:border-brand"
+            />
+            <button
+              type="button"
+              onClick={addCredit}
+              className="rounded-lg bg-white/10 px-4 text-sm font-semibold transition-colors hover:bg-white/15"
+            >
+              Agregar
+            </button>
+          </div>
+          {credits.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {credits.map((credit, index) => (
+                <li key={`${credit.role}-${credit.name}-${index}`}>
+                  <button
+                    type="button"
+                    onClick={() => removeCredit(index)}
+                    className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-xs font-normal text-foreground ring-1 ring-inset ring-white/10 hover:ring-danger/40"
+                  >
+                    {CREDIT_ROLE_LABEL[credit.role]}: {credit.name}
+                    <span aria-hidden>×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {error && (
           <p role="alert" className="rounded-lg bg-danger/10 px-4 py-3 text-sm font-semibold text-danger">

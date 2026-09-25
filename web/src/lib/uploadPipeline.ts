@@ -28,6 +28,33 @@ export const UPLOAD_STEPS = [
 
 export type UploadStep = 0 | 1 | 2 | 3 | 4;
 
+/** Mismo universo que el enum `CreditRole` del backend. */
+export type CreditRole =
+  | "MAIN_ARTIST"
+  | "FEATURED_ARTIST"
+  | "REMIXER"
+  | "PRODUCER"
+  | "COMPOSER"
+  | "WRITER"
+  | "MIX_ENGINEER"
+  | "MASTERING_ENGINEER";
+
+export const CREDIT_ROLE_LABEL: Record<CreditRole, string> = {
+  MAIN_ARTIST: "Artista principal",
+  FEATURED_ARTIST: "Artista invitado",
+  REMIXER: "Remixer",
+  PRODUCER: "Productor",
+  COMPOSER: "Compositor",
+  WRITER: "Letrista",
+  MIX_ENGINEER: "Mezcla",
+  MASTERING_ENGINEER: "Masterización",
+};
+
+export interface CreditDraft {
+  role: CreditRole;
+  name: string;
+}
+
 /**
  * Lee la duración real del archivo antes de subirlo.
  *
@@ -54,6 +81,10 @@ export interface UploadParams {
   title: string;
   audio: File;
   cover: File;
+  /** Sin álbum, el backend publica un sencillo (ver publish en uploads.ts). */
+  albumId?: string;
+  /** Créditos a nombre suelto — compositor, productor, etc. Ninguno es obligatorio. */
+  credits?: CreditDraft[];
   onStep?: (step: UploadStep) => void;
 }
 
@@ -68,10 +99,12 @@ export async function uploadTrack({
   title,
   audio,
   cover,
+  albumId,
+  credits,
   onStep,
 }: UploadParams): Promise<PublishedTrack> {
   onStep?.(0);
-  const { upload } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title });
+  const { upload } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title, albumId });
 
   onStep?.(1);
   const duration = await readAudioDuration(audio);
@@ -84,6 +117,10 @@ export async function uploadTrack({
   const coverForm = new FormData();
   coverForm.append("cover", cover);
   await uploadFile(`/uploads/${upload.id}/cover`, coverForm);
+
+  if (credits && credits.length > 0) {
+    await http.patch(`/uploads/${upload.id}`, { creditsDraft: credits });
+  }
 
   onStep?.(3);
   await http.post(`/uploads/${upload.id}/analyze`);
