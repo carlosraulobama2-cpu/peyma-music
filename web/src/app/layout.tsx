@@ -4,6 +4,8 @@ import { AuthProvider } from "../lib/AuthProvider";
 import { PlayerDeck } from "../components/PlayerDeck";
 import { MaintenanceScreen } from "../components/MaintenanceScreen";
 import { ToastContainer } from "../components/ToastContainer";
+import { ImpersonationBanner } from "../components/ImpersonationBanner";
+import { AnnouncementBanner } from "../components/AnnouncementBanner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,6 +28,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <AuthProvider>
+          <ImpersonationBanner />
+          <AnnouncementBanner />
           {children}
           <PlayerDeck />
           <MaintenanceScreen />
