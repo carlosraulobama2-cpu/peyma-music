@@ -140,6 +140,32 @@ router.get('/me/profile', authMiddleware, async (req: AuthRequest, res: Response
   res.json({ artist });
 });
 
+/**
+ * TODAS las canciones propias, en cualquier estado.
+ *
+ * `GET /artists/:id` (el perfil público) filtra a `APPROVED` — a propósito,
+ * nadie más debería ver una pista pendiente o rechazada. Pero eso dejaba a
+ * quien acaba de publicar sin ninguna forma de ver (ni escuchar, ver
+ * `/tracks/:id/stream`) lo que subió mientras espera revisión: la canción
+ * existía en la base pero era invisible hasta para su propio dueño.
+ */
+router.get('/me/tracks', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const artist = await prisma.artist.findFirst({ where: { ownerId: req.user!.id }, select: { id: true } });
+  if (!artist) return void res.json({ tracks: [] });
+
+  const tracks = await prisma.track.findMany({
+    where: { artistId: artist.id },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      album: { select: { id: true, title: true, coverUrl: true } },
+      artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
+    },
+  });
+
+  const playCounts = await getPlayCounts(tracks.map((t) => t.id));
+  res.json({ tracks: tracks.map((t) => ({ ...t, playCount: playCounts.get(t.id) ?? 0 })) });
+});
+
 /** Seguidores totales + oyentes únicos de los últimos 28 días — las dos métricas estilo Spotify. */
 router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);

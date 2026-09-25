@@ -110,3 +110,40 @@ export const optionalAuthMiddleware = async (
   }
   next();
 };
+
+/**
+ * Igual que `optionalAuthMiddleware` (nunca bloquea sin token), pero además
+ * acepta `?token=` en la query — la combinación que le falta a
+ * `authFromHeaderOrQuery` (que sí exige token) para rutas que son PÚBLICAS
+ * para quien no tiene sesión pero necesitan reconocer al dueño cuando lo
+ * pide un `<audio src>`/`<img src>`, que no pueden mandar `Authorization`.
+ * Es el caso de `/tracks/:id/stream`: cualquiera puede oír una pista
+ * aprobada sin loguearse, pero el artista dueño de una pista todavía
+ * pendiente de revisión necesita poder escuchar SU PROPIA subida antes de
+ * que un admin la apruebe, y el reproductor no manda cabeceras.
+ */
+export const optionalAuthFromHeaderOrQuery = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const headerToken = extractTokenFromHeader(req.headers.authorization);
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  const token = headerToken ?? queryToken;
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, email: true, displayName: true, role: true },
+    });
+    if (user) req.user = user;
+  } catch (error) {
+    console.warn('[auth] Token opcional (header o query) inválido, continuando como anónimo:', error);
+  }
+  next();
+};

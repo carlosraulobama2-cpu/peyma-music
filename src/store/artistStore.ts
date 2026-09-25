@@ -75,12 +75,10 @@ export const useArtistStore = create<ArtistStudioStore>()(
       stopBeingArtist: () => set({ profile: null, releases: [], stats: null, isLoadingStats: false }),
 
       /**
-       * Registro local de una canción recién subida.
-       *
-       * Se añade aquí porque el servidor todavía no la devuelve: acaba de
-       * entrar en revisión y `GET /tracks` sólo publica las aprobadas. En
-       * cuanto la aprueben, `refreshStats` la recibirá del servidor y esta
-       * copia se reemplaza por la buena.
+       * Registro local de una canción recién subida, para que aparezca al
+       * instante sin esperar al próximo `refreshStats` (que de cualquier
+       * forma la reemplaza por la copia real del servidor en cuanto llega,
+       * vía `GET /artists/me/tracks` — ver abajo).
        */
       publishTrack: (track) =>
         set((state) => {
@@ -90,6 +88,7 @@ export const useArtistStore = create<ArtistStudioStore>()(
             artist: state.profile.name,
             artistId: state.profile.id,
             isLiked: false,
+            status: 'PENDING_REVIEW',
           };
           return { releases: [fullTrack, ...state.releases] };
         }),
@@ -103,20 +102,20 @@ export const useArtistStore = create<ArtistStudioStore>()(
 
         set({ isLoadingStats: true });
         try {
-          const [stats, published] = await Promise.all([
-            api.getArtistStats(profile.id),
-            api.getArtistTracks(profile.id),
-          ]);
-
-          // Las que subió desde este teléfono y aún no están aprobadas no
-          // vienen del servidor: se conservan para que no parezca que la
-          // subida se perdió mientras está en revisión.
-          const publishedIds = new Set(published.map((t) => t.id));
-          const stillPending = get().releases.filter((t) => !publishedIds.has(t.id));
+          /**
+           * `getMyTracks` (no `getArtistTracks`) porque trae TODOS los
+           * estados, no sólo `APPROVED`. Antes se mezclaba lo aprobado del
+           * servidor con lo pendiente que quedaba en el teléfono desde
+           * `publishTrack`, y esa mezcla local nunca se enteraba de un
+           * rechazo ni de una aprobación hecha desde otro dispositivo —
+           * la canción se veía "pendiente" para siempre aunque ya hubiera
+           * una decisión real. Con esto el servidor manda siempre.
+           */
+          const [stats, releases] = await Promise.all([api.getArtistStats(profile.id), api.getMyTracks()]);
 
           set((state) => ({
             stats,
-            releases: [...published, ...stillPending],
+            releases,
             isLoadingStats: false,
             profile: state.profile
               ? { ...state.profile, monthlyListeners: stats.monthlyListeners }

@@ -26,7 +26,7 @@
  * eso un origen que no las mande tiene que seguir proxeándose.
  */
 import { Router, type Request, type Response } from 'express';
-import { optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
+import { optionalAuthFromHeaderOrQuery, type AuthRequest } from '../middleware/auth';
 import { idParamSchema } from '../schemas/validation';
 import { NotFoundError, AppError } from '../utils/errors';
 import { isPubliclyReadable } from '../services/storage';
@@ -123,7 +123,7 @@ export async function pipeAudio(audioUrl: string, req: Request, res: Response): 
   res.end();
 }
 
-router.get('/:id/stream', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/:id/stream', optionalAuthFromHeaderOrQuery, async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);
 
   // Cacheado en memoria: esta consulta costaba ~240 ms contra Neon y es lo
@@ -131,6 +131,8 @@ router.get('/:id/stream', optionalAuthMiddleware, async (req: AuthRequest, res: 
   // el TTL y cómo se invalida al retirar una canción.
   const track = await getTrackAccess(id);
   if (!track) throw new NotFoundError('Pista');
+
+  const isOwner = req.user != null && track.artistOwnerId === req.user.id;
 
   /**
    * Retirada por plagio: el DUEÑO de la canción recibe una explicación; el
@@ -143,7 +145,6 @@ router.get('/:id/stream', optionalAuthMiddleware, async (req: AuthRequest, res: 
    * disputas ajenas.
    */
   if (track.isBlocked) {
-    const isOwner = req.user != null && track.artistOwnerId === req.user.id;
     if (isOwner) {
       // 451: "no disponible por motivos legales". Es el código exacto para
       // esto, y permite al cliente distinguirlo de un 404 y pintar la
@@ -163,8 +164,17 @@ router.get('/:id/stream', optionalAuthMiddleware, async (req: AuthRequest, res: 
     throw new NotFoundError('Pista');
   }
 
-  // Bloqueo del artista entero o pista no aprobada: invisible para todos.
-  if (track.status !== 'APPROVED' || track.artistIsBlocked) throw new NotFoundError('Pista');
+  // Un artista bloqueado no suena para nadie, ni siquiera para sí mismo.
+  if (track.artistIsBlocked) throw new NotFoundError('Pista');
+
+  /**
+   * Pendiente de revisión o rechazada: invisible para el público, pero NO
+   * para quien la subió. Antes de esto, publicar dejaba la canción muda para
+   * TODO el mundo —incluido su propio creador— hasta que un admin la
+   * aprobara desde el panel; quien acababa de subir algo no podía ni
+   * escuchar lo que acababa de publicar.
+   */
+  if (track.status !== 'APPROVED' && !isOwner) throw new NotFoundError('Pista');
 
   await pipeAudio(track.audioUrl, req, res);
 });

@@ -30,6 +30,8 @@ export interface Track {
   label?: string;
   isrc?: string;
   isExplicit?: boolean;
+  /** Sólo presente en `GET /artists/me/tracks` — el resto de endpoints sólo devuelve pistas ya `APPROVED`. */
+  status?: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
 
   // --- Campos del motor de recomendaciones (ver src/types/music.ts) ---
   // Opcionales a propósito: son aditivos sobre el `Track` que ya usan ~15

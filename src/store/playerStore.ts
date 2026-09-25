@@ -40,16 +40,25 @@ let sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
  * moderación (una pista no aprobada deja de sonar) y soporta `Range` para
  * buscar sin descargar el archivo entero. Si no hay API configurada, se cae
  * a la URL original para no dejar la app sin audio.
+ *
+ * `previewToken`: el reproductor nativo no manda la cabecera
+ * `Authorization`, así que para escuchar una pista TODAVÍA no aprobada (la
+ * vista previa del propio artista sobre su subida, ver `mis-canciones.tsx`)
+ * el token va en la URL — el backend acepta esto sólo en esta ruta, a
+ * propósito (ver `optionalAuthFromHeaderOrQuery`). Para una pista pública
+ * normal no hace falta y no se manda.
  */
-function resolveStreamUrl(track: Track): string {
+function resolveStreamUrl(track: Track, previewToken?: string): string {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  return apiUrl ? `${apiUrl}/tracks/${track.id}/stream` : track.audioUrl;
+  if (!apiUrl) return track.audioUrl;
+  const url = `${apiUrl}/tracks/${track.id}/stream`;
+  return previewToken ? `${url}?token=${encodeURIComponent(previewToken)}` : url;
 }
 
-export function toTrackPlayerTrack(track: Track): AddTrack {
+export function toTrackPlayerTrack(track: Track, previewToken?: string): AddTrack {
   return {
     id: track.id,
-    url: resolveStreamUrl(track),
+    url: resolveStreamUrl(track, previewToken),
     title: track.title,
     artist: track.artist,
     album: track.album,
@@ -74,7 +83,11 @@ interface PlayerStore extends PlayerState {
   /** Qué otro dispositivo está reproduciendo, si alguno — alimenta "Sonando en …". */
   remoteDeviceName: string | null;
 
-  play: (track: Track, queue?: Track[]) => Promise<void>;
+  /**
+   * `previewToken`: sólo lo pasa la pantalla "Mis canciones" al escuchar una
+   * subida propia todavía no aprobada — ver `resolveStreamUrl`.
+   */
+  play: (track: Track, queue?: Track[], previewToken?: string) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   next: () => Promise<void>;
@@ -132,7 +145,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   isRemoteCommand: false,
   remoteDeviceName: null,
 
-  play: async (track, queueOverride) => {
+  play: async (track, queueOverride, previewToken) => {
     const newQueue = queueOverride ?? [track];
     const index = Math.max(
       0,
@@ -142,15 +155,20 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({ isBuffering: true, playbackError: null });
     try {
       await TrackPlayer.reset();
-      await TrackPlayer.add(newQueue.map(toTrackPlayerTrack));
+      await TrackPlayer.add(newQueue.map((t) => toTrackPlayerTrack(t, previewToken)));
       await TrackPlayer.skip(index);
       await TrackPlayer.play();
 
-      useLibraryStore.getState().addToRecentlyPlayed(track);
-      // Alimenta oyentes mensuales, tendencias y las horas escuchadas del
-      // panel. Hasta ahora la app no registraba nada y todo el uso móvil
-      // era invisible en las métricas.
-      startStream(track.id);
+      // La vista previa de una subida propia todavía no aprobada no cuenta
+      // como escucha real: ni entra al historial ni alimenta tendencias, el
+      // backend además la rechazaría (`/streams/log` exige APPROVED).
+      if (!previewToken) {
+        useLibraryStore.getState().addToRecentlyPlayed(track);
+        // Alimenta oyentes mensuales, tendencias y las horas escuchadas del
+        // panel. Hasta ahora la app no registraba nada y todo el uso móvil
+        // era invisible en las métricas.
+        startStream(track.id);
+      }
 
       set({
         currentTrack: track,
@@ -241,7 +259,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const nextUpcoming = isShuffled ? upcoming : shuffle(upcoming);
       const newQueue = [...played, ...nextUpcoming];
 
-      await TrackPlayer.setQueue(newQueue.map(toTrackPlayerTrack));
+      await TrackPlayer.setQueue(newQueue.map((t) => toTrackPlayerTrack(t)));
       await TrackPlayer.skip(queueIndex);
 
       set({ isShuffled: !isShuffled, queue: newQueue });

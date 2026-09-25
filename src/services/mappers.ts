@@ -41,6 +41,7 @@ export interface BackendTrack {
   label?: string | null;
   isrc?: string | null;
   isExplicit?: boolean;
+  status?: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
 }
 
 export function mapTrack(
@@ -72,6 +73,7 @@ export function mapTrack(
     label: raw.label ?? undefined,
     isrc: raw.isrc ?? undefined,
     isExplicit: raw.isExplicit,
+    status: raw.status,
   };
 }
 
