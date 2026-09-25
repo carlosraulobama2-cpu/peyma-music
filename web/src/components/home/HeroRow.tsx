@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Flame } from "lucide-react";
 import { CoverImage } from "../CoverImage";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import type { HeroItem } from "../../lib/useHomeFeed";
@@ -43,7 +44,12 @@ export function HeroRow({ items }: HeroRowProps) {
 
   return (
     <section aria-label="Destacados">
-      <h2 className="mb-4 text-xl font-bold sm:text-2xl">Destacado</h2>
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#FF6B6B22]">
+          <Flame size={15} color="#FF6B6B" strokeWidth={2.25} />
+        </span>
+        <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Destacado</h2>
+      </div>
 
       {/* `snap` para que el desplazamiento se detenga alineado con cada
           tarjeta en vez de a mitad de camino. */}
@@ -58,6 +64,12 @@ export function HeroRow({ items }: HeroRowProps) {
               className="group relative w-[min(100%,26rem)] shrink-0 snap-start overflow-hidden rounded-xl"
               style={{ background: `linear-gradient(120deg, ${color} 0%, ${color}66 55%, transparent 100%)` }}
             >
+              <span
+                className="pointer-events-none absolute right-3 top-2 text-2xl font-extrabold text-white/30"
+                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+              >
+                {String(index + 1).padStart(2, "0")}
+              </span>
               <div className="flex items-center gap-4 p-4 backdrop-blur-[1px]">
                 <CoverImage src={item.track.coverUrl} alt={item.track.title} size={104} rounded="rounded-lg" />
 

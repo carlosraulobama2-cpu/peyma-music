@@ -2,13 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 
 const SCROLL_STEP = 400;
 
 interface MediaCarouselProps {
   title: string;
+  subtitle?: string;
   /** Si se pasa, el título se convierte en enlace a la sección completa. */
   href?: string;
+  /**
+   * Ícono simbólico de la sección, con un halo de su propio color — sin
+   * esto, diez carruseles seguidos (Novedades, Para ti, cada género…) se
+   * leían como el mismo título repetido. Cada sección ahora se distingue
+   * de un vistazo, igual que en la app.
+   */
+  icon?: LucideIcon;
+  accentColor?: string;
   children: ReactNode;
 }
 
@@ -19,7 +29,7 @@ interface MediaCarouselProps {
  * contar tarjetas: así funciona igual con 3 elementos que con 50, y no hay
  * que avisarle al componente cuántos hijos tiene.
  */
-export function MediaCarousel({ title, href, children }: MediaCarouselProps) {
+export function MediaCarousel({ title, subtitle, href, icon: Icon, accentColor = "#1DB954", children }: MediaCarouselProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -51,17 +61,30 @@ export function MediaCarousel({ title, href, children }: MediaCarouselProps) {
 
   return (
     <section className="group/carousel relative">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold sm:text-2xl">
-          {href ? (
-            <Link href={href} className="hover:underline">
-              {title}
-            </Link>
-          ) : (
-            title
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {Icon && (
+            <span
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+              style={{ backgroundColor: `${accentColor}22` }}
+            >
+              <Icon size={15} color={accentColor} strokeWidth={2.25} />
+            </span>
           )}
-        </h2>
-        <div className="flex gap-2 opacity-0 transition-opacity duration-300 group-hover/carousel:opacity-100">
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+              {href ? (
+                <Link href={href} className="hover:underline">
+                  {title}
+                </Link>
+              ) : (
+                title
+              )}
+            </h2>
+            {subtitle && <p className="truncate text-sm text-muted">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2 opacity-0 transition-opacity duration-300 group-hover/carousel:opacity-100">
           <button
             onClick={() => scrollBy(-SCROLL_STEP)}
             disabled={!canScrollLeft}

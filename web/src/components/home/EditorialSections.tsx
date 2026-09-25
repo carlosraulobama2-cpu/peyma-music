@@ -1,10 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { Zap, TrendingUp, Disc3, Users, Palette, type LucideIcon } from "lucide-react";
 import { MediaCarousel } from "./MediaCarousel";
 import { MediaCard, MediaCardSkeleton } from "./MediaCard";
 import type { EditorialSection } from "../../lib/editorial";
 import type { CatalogTrack } from "../../lib/catalog";
+
+/** Mismo criterio que EditorialSections.tsx en la app: un símbolo y un tinte por tipo de sección. */
+const KIND_ICON: Record<string, LucideIcon> = {
+  NEW_RELEASES: Zap,
+  TOP_TRACKS: TrendingUp,
+  TOP_ALBUMS: Disc3,
+  TOP_ARTISTS: Users,
+  MANUAL: Palette,
+};
+const KIND_TINT: Record<string, string> = {
+  NEW_RELEASES: "#4AD9E8",
+  TOP_TRACKS: "#FFC94D",
+  TOP_ALBUMS: "#B478FF",
+  TOP_ARTISTS: "#FF8FB1",
+  MANUAL: "#1DB954",
+};
 
 /**
  * Pinta las secciones que el curador definió en el panel de control.
@@ -70,17 +87,25 @@ export function EditorialSections({ sections, loading, onPlay }: EditorialSectio
 
         if (cards.length === 0) return null;
 
+        const Icon = KIND_ICON[section.kind] ?? Palette;
+        const tint = KIND_TINT[section.kind] ?? "#1DB954";
+
         if (section.layout === "GRID") {
           return (
             <section key={section.id}>
               {/* El título lleva a la sección completa: el carrusel sólo
                   muestra las primeras piezas. */}
-              <h2 className="mb-1 text-xl font-bold sm:text-2xl">
-                <Link href={`/seccion/${section.slug}`} className="hover:underline">
-                  {section.title}
-                </Link>
-              </h2>
-              {section.subtitle && <p className="mb-4 text-sm text-muted">{section.subtitle}</p>}
+              <div className="mb-1 flex items-center gap-2.5">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${tint}22` }}>
+                  <Icon size={15} color={tint} strokeWidth={2.25} />
+                </span>
+                <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+                  <Link href={`/seccion/${section.slug}`} className="hover:underline">
+                    {section.title}
+                  </Link>
+                </h2>
+              </div>
+              {section.subtitle && <p className="mb-4 ml-[38px] text-sm text-muted">{section.subtitle}</p>}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 {cards.map((card) => (
                   <MediaCard
@@ -98,7 +123,14 @@ export function EditorialSections({ sections, loading, onPlay }: EditorialSectio
         }
 
         return (
-          <MediaCarousel key={section.id} title={section.title} href={`/seccion/${section.slug}`}>
+          <MediaCarousel
+            key={section.id}
+            title={section.title}
+            subtitle={section.subtitle ?? undefined}
+            href={`/seccion/${section.slug}`}
+            icon={Icon}
+            accentColor={tint}
+          >
             {cards.map((card) => (
               <MediaCard
                 key={card.key}
