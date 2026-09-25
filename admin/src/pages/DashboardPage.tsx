@@ -30,6 +30,14 @@ interface MetricCardProps {
   tone?: 'normal' | 'warn' | 'critical' | 'live';
 }
 
+/** Tinte del ícono y su halo por tono — la misma idea que en Inicio (app y web): un color propio hace que "crítico" se lea antes que el número. */
+const TONE_TINT: Record<NonNullable<MetricCardProps['tone']>, string> = {
+  normal: '#B3B3B3',
+  warn: '#F5A623',
+  critical: '#FF6B6B',
+  live: '#1DB954',
+};
+
 function MetricCard({ icon: Icon, label, value, hint, tone = 'normal' }: MetricCardProps) {
   const toneClass =
     tone === 'critical'
@@ -39,11 +47,21 @@ function MetricCard({ icon: Icon, label, value, hint, tone = 'normal' }: MetricC
         : tone === 'live'
           ? 'text-brand'
           : 'text-foreground';
+  const tint = TONE_TINT[tone];
 
   return (
-    <div className="rounded-xl border border-white/10 bg-surface p-5">
+    <div
+      className={`rounded-xl border bg-surface p-5 transition-colors ${
+        tone === 'critical' ? 'border-danger/30' : 'border-white/10'
+      }`}
+    >
       <div className="flex items-center gap-2 text-sm text-muted">
-        <Icon size={15} aria-hidden />
+        <span className="relative flex size-6 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: `${tint}22` }}>
+          <Icon size={13} aria-hidden color={tint} />
+          {tone === 'live' && (
+            <span className="absolute -right-0.5 -top-0.5 size-2 animate-pulse rounded-full bg-brand ring-2 ring-surface" aria-hidden />
+          )}
+        </span>
         {label}
       </div>
       <div className={`mt-2 text-3xl font-bold tabular-nums ${toneClass}`}>{value}</div>
