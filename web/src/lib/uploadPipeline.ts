@@ -1,4 +1,4 @@
-import { http, uploadFile } from "./httpClient";
+import { http, uploadFile, getAuthToken } from "./httpClient";
 
 /**
  * Subida de una canción desde la web.
@@ -154,4 +154,111 @@ export async function uploadTrack({
   const { track } = await http.post<{ track: PublishedTrack }>(`/uploads/${upload.id}/publish`, { confirm: true });
 
   return track;
+}
+
+export interface CreatedAlbum {
+  id: string;
+  title: string;
+  coverUrl: string;
+  type: "SINGLE" | "EP" | "ALBUM";
+}
+
+export interface ReleaseTrackInput {
+  title: string;
+  audio: File;
+}
+
+export interface UploadReleaseParams {
+  artistId: string;
+  albumTitle: string;
+  albumType: "EP" | "ALBUM";
+  /** Portada compartida por el álbum y por cada una de sus canciones. */
+  cover: File;
+  tracks: ReleaseTrackInput[];
+  credits?: CreditDraft[];
+  onProgress?: (info: { trackIndex: number; totalTracks: number; step: UploadStep }) => void;
+}
+
+export interface PublishedRelease {
+  album: CreatedAlbum;
+  tracks: PublishedTrack[];
+}
+
+/**
+ * Publica un EP o álbum entero: crea el álbum y sube cada canción por el
+ * mismo pipeline de `uploadTrack`, todas con el mismo `albumId`. Mismo
+ * mecanismo que `src/services/uploadPipeline.ts` en la app — ver el
+ * comentario ahí para el porqué del primer track especial: `POST /albums`
+ * exige una `coverUrl` que ya sea una URL válida, y la única forma de
+ * conseguir una es subir la portada primero, así que la primera canción
+ * sube su audio y portada ANTES de que el álbum exista, y recién con esa
+ * URL real se crea el álbum y se le asigna esa canción.
+ */
+export async function uploadRelease({
+  artistId,
+  albumTitle,
+  albumType,
+  cover,
+  tracks,
+  credits,
+  onProgress,
+}: UploadReleaseParams): Promise<PublishedRelease> {
+  if (tracks.length < 2) {
+    throw new Error("Un EP o álbum necesita al menos 2 canciones.");
+  }
+
+  const [first, ...rest] = tracks;
+  const report = (trackIndex: number, step: UploadStep) => onProgress?.({ trackIndex, totalTracks: tracks.length, step });
+
+  report(0, 0);
+  const { upload: draft } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title: first!.title });
+
+  report(0, 1);
+  const duration = await readAudioDuration(first!.audio);
+  const audioForm = new FormData();
+  audioForm.append("audio", first!.audio);
+  if (duration > 0) audioForm.append("durationSeconds", String(Math.round(duration)));
+  await uploadFile(`/uploads/${draft.id}/audio`, audioForm);
+
+  report(0, 2);
+  const coverForm = new FormData();
+  coverForm.append("cover", cover);
+  const { upload: withCover } = await uploadFile<{ upload: { coverUrl: string | null } }>(`/uploads/${draft.id}/cover`, coverForm);
+  if (!withCover.coverUrl) throw new Error("No se pudo subir la portada.");
+
+  const { album } = await http.post<{ album: CreatedAlbum }>("/albums", {
+    artistId,
+    title: albumTitle,
+    coverUrl: withCover.coverUrl,
+    releaseYear: new Date().getFullYear(),
+    type: albumType,
+  });
+
+  await http.patch(`/uploads/${draft.id}`, {
+    albumId: album.id,
+    ...(credits && credits.length > 0 ? { creditsDraft: credits } : {}),
+  });
+
+  report(0, 3);
+  await http.post(`/uploads/${draft.id}/analyze`);
+  report(0, 4);
+  const { track: firstTrack } = await http.post<{ track: PublishedTrack }>(`/uploads/${draft.id}/publish`, { confirm: true });
+
+  const publishedTracks = [firstTrack];
+  for (let i = 0; i < rest.length; i++) {
+    const input = rest[i]!;
+    const track = await uploadTrack({
+      artistId,
+      title: input.title,
+      audio: input.audio,
+      cover,
+      albumId: album.id,
+      credits,
+      token: getAuthToken(),
+      onStep: (step) => report(i + 1, step),
+    });
+    publishedTracks.push(track);
+  }
+
+  return { album, tracks: publishedTracks };
 }
