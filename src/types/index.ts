@@ -24,6 +24,12 @@ export interface Track {
   isLiked: boolean;
   /** Reproducciones totales, tal como las cuenta `StreamLog`. Ausente donde el endpoint no las envía. */
   playCount?: number;
+  /** Créditos — ausentes donde el endpoint no los incluye, nunca vacíos por diseño. */
+  composer?: string;
+  producer?: string;
+  label?: string;
+  isrc?: string;
+  isExplicit?: boolean;
 
   // --- Campos del motor de recomendaciones (ver src/types/music.ts) ---
   // Opcionales a propósito: son aditivos sobre el `Track` que ya usan ~15
@@ -81,6 +87,9 @@ export interface Playlist {
 
 export type AccountType = 'listener' | 'artist';
 
+/** Espejo del enum `LocationConsent` de Prisma. */
+export type LocationConsentValue = 'NOT_ASKED' | 'GRANTED' | 'DENIED';
+
 export interface User {
   id: string;
   displayName: string;
@@ -89,6 +98,7 @@ export interface User {
   favoriteGenres: string[];
   createdAt: string;
   accountType: AccountType;
+  locationConsent: LocationConsentValue;
 }
 
 /** Desglose de oyentes por país, para el panel "Dónde te escuchan" del artista. */

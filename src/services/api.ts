@@ -289,9 +289,16 @@ export const api = {
   /**
    * Portada completa en UNA petición.
    *
-   * Es el MISMO endpoint que usa la web. Que ambas pidan lo mismo es el
-   * punto: la composición de Inicio se decide en el servidor y los dos
-   * clientes muestran lo mismo sin ponerse de acuerdo.
+   * Es el MISMO endpoint que usa la web, y `hero`/`quickAccess`/`artists`
+   * se pintan igual en los dos clientes: lo que decide un curador desde el
+   * panel se ve en ambos sin desplegar nada.
+   *
+   * `rows` es la excepción: la app móvil ya trae "Escuchado recientemente",
+   * "Tendencias" (/charts) y "Novedades" con sus propios componentes, cada
+   * uno cargando y fallando por separado (ver el comentario al principio de
+   * `app/(tabs)/index.tsx`), así que pintar además las filas de acá
+   * duplicaría esas secciones. Se sigue mapeando para no bifurcar el tipo
+   * `HomeFeed` entre plataformas, pero el cliente móvil no la renderiza.
    */
   async getHomeFeed({ signal }: ApiOptions = {}): Promise<HomeFeed> {
     const raw = await http.get<BackendHomeFeed>('/home', { signal });

@@ -33,6 +33,7 @@ export function MiniPlayer() {
   const duration = usePlayerStore((s) => s.duration);
   const pause = usePlayerStore((s) => s.pause);
   const resume = usePlayerStore((s) => s.resume);
+  const remoteDeviceName = usePlayerStore((s) => s.remoteDeviceName);
 
   const scale = useSharedValue(1);
   const translateY = useSharedValue(0);
@@ -106,7 +107,7 @@ export function MiniPlayer() {
               {currentTrack.title}
             </Text>
             <Text style={styles.artist} numberOfLines={1}>
-              {currentTrack.artist}
+              {remoteDeviceName ? `Sonando en ${remoteDeviceName}` : currentTrack.artist}
             </Text>
           </View>
           <Pressable

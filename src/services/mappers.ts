@@ -36,6 +36,11 @@ export interface BackendTrack {
   album?: BackendAlbumRef;
   isLiked?: boolean;
   playCount?: number;
+  composer?: string | null;
+  producer?: string | null;
+  label?: string | null;
+  isrc?: string | null;
+  isExplicit?: boolean;
 }
 
 export function mapTrack(
@@ -62,6 +67,11 @@ export function mapTrack(
     primaryGenre: raw.genre ?? undefined,
     playCount: raw.playCount,
     releaseDate: raw.createdAt,
+    composer: raw.composer ?? undefined,
+    producer: raw.producer ?? undefined,
+    label: raw.label ?? undefined,
+    isrc: raw.isrc ?? undefined,
+    isExplicit: raw.isExplicit,
   };
 }
 

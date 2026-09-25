@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, Dimensions, ScrollView, Alert, type LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { usePlayerStore, useLibraryStore, useSheetStore } from '../../src/store';
 import { useAudioPlayer } from '../../src/hooks';
-import type { SleepTimerDuration } from '../../src/types';
+import { api } from '../../src/services';
+import type { SleepTimerDuration, Track } from '../../src/types';
 import { useTheme, useThemedStyles, spacing, typography, motion, type Theme } from '../../src/theme';
 import { ProgressBar, AppBar, EmptyState } from '../../src/components';
 import { clamp } from '../../src/utils';
@@ -54,6 +55,31 @@ export default function PlayerFullScreen() {
   const isFavorite = useLibraryStore((s) => s.isFavorite);
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
   const openTrackOptions = useSheetStore((s) => s.openTrackOptions);
+
+  /**
+   * Compositor/productor/sello/ISRC sólo vienen en el detalle completo de
+   * la pista (`GET /tracks/:id`); los listados (Inicio, playlists) los
+   * omiten para no cargar de más una respuesta que ya reparte cientos de
+   * pistas. Se piden acá, aparte, la primera vez que se abre esta pantalla
+   * para esa canción — antes la app ni los pedía ni los mostraba, aunque el
+   * backend y la web sí los tienen.
+   */
+  const [trackCredits, setTrackCredits] = useState<Track | null>(null);
+  useEffect(() => {
+    if (!currentTrack) return;
+    let cancelled = false;
+    api.getTrackById(currentTrack.id).then((track) => {
+      if (!cancelled && track) setTrackCredits(track);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack]);
+
+  // Créditos de la pista anterior mientras llega la nueva respuesta: se
+  // descartan comparando el id en vez de resetear el estado desde el
+  // efecto, que dispararía un render en cascada.
+  const currentTrackCredits = trackCredits?.id === currentTrack?.id ? trackCredits : null;
 
   const [volumeTrackWidth, setVolumeTrackWidth] = useState(0);
   const heartScale = useSharedValue(1);
@@ -112,6 +138,24 @@ export default function PlayerFullScreen() {
     togglePlayPause();
   };
 
+  /** Sólo lista las filas que existen de verdad, igual que el modal de créditos de la web. */
+  const handleShowCredits = () => {
+    if (!currentTrack) return;
+    const rows: [string, string | undefined][] = [
+      ['Interpretada por', currentTrack.artist],
+      ['Compuesta por', currentTrackCredits?.composer],
+      ['Producida por', currentTrackCredits?.producer],
+      ['Sello', currentTrackCredits?.label],
+      ['Álbum', currentTrack.album],
+      ['ISRC', currentTrackCredits?.isrc],
+    ];
+    const present = rows.filter(([, value]) => Boolean(value));
+    const body =
+      present.map(([label, value]) => `${label}: ${value}`).join('\n') +
+      (present.length <= 2 ? '\n\nEsta pista todavía no tiene créditos completos cargados.' : '');
+    Alert.alert('Créditos', body);
+  };
+
   const volumePan = Gesture.Pan()
     .onUpdate((event) => {
       if (volumeTrackWidth <= 0) return;
@@ -154,12 +198,21 @@ export default function PlayerFullScreen() {
 
         <View style={styles.infoContainer}>
           <View style={styles.titleContainer}>
-            <Text style={styles.title} numberOfLines={1}>
-              {currentTrack.title}
-            </Text>
-            <Text style={styles.artist} numberOfLines={1}>
-              {currentTrack.artist}
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                {currentTrack.title}
+              </Text>
+              {currentTrackCredits?.isExplicit && (
+                <View style={styles.explicitBadge}>
+                  <Text style={styles.explicitBadgeText}>E</Text>
+                </View>
+              )}
+            </View>
+            <Pressable onPress={handleShowCredits} accessibilityRole="button" accessibilityLabel="Ver créditos">
+              <Text style={styles.artist} numberOfLines={1}>
+                {currentTrack.artist}
+              </Text>
+            </Pressable>
           </View>
           <Pressable
             onPress={handleLike}
@@ -368,11 +421,29 @@ const makeStyles = ({ colors }: Theme) => ({
     flex: 1,
     paddingRight: spacing.lg,
   },
+  titleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.xs,
+  },
   title: {
     color: colors.text.primary,
     fontFamily: typography.family.bold,
     fontSize: typography.size.xl,
     marginBottom: spacing.xs,
+    flexShrink: 1,
+  },
+  explicitBadge: {
+    backgroundColor: colors.surface[300],
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginBottom: spacing.xs,
+  },
+  explicitBadgeText: {
+    color: colors.text.primary,
+    fontFamily: typography.family.bold,
+    fontSize: 10,
   },
   artist: {
     color: colors.text.secondary,

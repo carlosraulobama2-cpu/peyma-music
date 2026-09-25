@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, ActivityIndicator } from 'react-native';
 import TrackPlayer from 'react-native-track-player';
 import { playbackService } from '../src/services/trackPlayerService';
-import { useSetupTrackPlayer, useTrackPlayer, useListeningAnalytics } from '../src/hooks';
+import { useSetupTrackPlayer, useTrackPlayer, useListeningAnalytics, usePeymaConnect } from '../src/hooks';
 import { useAuthStore } from '../src/store';
 import { useTheme } from '../src/theme';
 import { ErrorBoundary, ToastHost, SheetHost } from '../src/components';
@@ -54,10 +54,11 @@ ErrorUtils.setGlobalHandler?.((error, isFatal) => {
   manejadorPrevio?.(error, isFatal);
 });
 
-/** Mantiene sincronizados TrackPlayer y el playerStore mientras la app vive. */
+/** Mantiene sincronizados TrackPlayer, el playerStore y Peyma Connect mientras la app vive. */
 function PlayerSync() {
   useTrackPlayer();
   useListeningAnalytics();
+  usePeymaConnect();
   return null;
 }
 

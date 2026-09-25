@@ -64,6 +64,16 @@ interface PlayerStore extends PlayerState {
   /** `null` si no hay temporizador de apagado activo. */
   sleepTimerEndsAt: number | null;
 
+  /**
+   * `true` mientras se está aplicando un comando que llegó por Peyma
+   * Connect (ver `usePeymaConnect`). El efecto que emite estado a los
+   * otros dispositivos lo consulta para NO reenviar a la red algo que
+   * acaba de llegar de la red — la mitad cliente de la supresión de eco.
+   */
+  isRemoteCommand: boolean;
+  /** Qué otro dispositivo está reproduciendo, si alguno — alimenta "Sonando en …". */
+  remoteDeviceName: string | null;
+
   play: (track: Track, queue?: Track[]) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -91,6 +101,17 @@ interface PlayerStore extends PlayerState {
 
   /** `minutes: null` cancela el temporizador activo. */
   setSleepTimer: (minutes: number | null) => void;
+
+  /**
+   * Ejecuta `mutation` con la bandera de "viene de Peyma Connect" activada.
+   * Acepta mutaciones async (a diferencia de la web, acá `pause`/`resume`/
+   * `seekTo`/etc. son promesas que llaman al player nativo antes de tocar
+   * el store) y no la baja hasta que terminen — si no, el `set()` interno
+   * de la acción llegaría con la bandera ya en `false` y se reenviaría al
+   * resto de dispositivos el comando que acaban de mandar ellos.
+   */
+  applyRemote: (mutation: () => void | Promise<void>) => void;
+  setRemoteDeviceName: (name: string | null) => void;
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -108,6 +129,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   crossfadeDurationMs: 5000,
   sleepTimerEndsAt: null,
   playbackError: null,
+  isRemoteCommand: false,
+  remoteDeviceName: null,
 
   play: async (track, queueOverride) => {
     const newQueue = queueOverride ?? [track];
@@ -345,4 +368,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     );
     set({ sleepTimerEndsAt: Date.now() + minutes * 60_000 });
   },
+
+  applyRemote: (mutation) => {
+    set({ isRemoteCommand: true });
+    const result = mutation();
+    if (result instanceof Promise) {
+      result.finally(() => set({ isRemoteCommand: false }));
+    } else {
+      set({ isRemoteCommand: false });
+    }
+  },
+
+  setRemoteDeviceName: (name) => set({ remoteDeviceName: name }),
 }));

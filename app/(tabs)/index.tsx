@@ -147,7 +147,7 @@ export default function HomeScreen() {
       <HeroRow items={home?.hero ?? []} isLoading={homeLoading} />
 
       <QuickFilterBar />
-      <QuickAccessGrid />
+      <QuickAccessGrid quickAccess={home?.quickAccess} />
       <FeaturedArtistBanner />
       <PopularArtistsRow artists={home?.artists ?? []} isLoading={homeLoading} />
 
