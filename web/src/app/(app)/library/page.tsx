@@ -6,6 +6,7 @@ import { useAuth } from "../../../lib/AuthProvider";
 import { useCatalogSection } from "../../../lib/useCatalogSection";
 import { fetchLikedTracks, createPlaylist } from "../../../lib/library";
 import { useLibrary } from "../../../lib/libraryContext";
+import { toast } from "../../../store/useToastStore";
 import type { CatalogTrack } from "../../../lib/catalog";
 import { MediaCard, MediaCardSkeleton } from "../../../components/home/MediaCard";
 import { MediaCarousel } from "../../../components/home/MediaCarousel";
@@ -40,8 +41,8 @@ export default function LibraryPage() {
     try {
       const { playlist } = await createPlaylist(title.trim());
       addPlaylist(playlist);
-    } catch {
-      // El error ya se ve reflejado en que la lista no crece — no hay toast engine en la web todavía.
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo crear la playlist.");
     } finally {
       setCreating(false);
     }

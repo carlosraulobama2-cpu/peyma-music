@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../lib/AuthProvider";
-import { getAuthToken } from "../../../lib/httpClient";
 import {
   fetchArtists,
   fetchMyArtistProfile,
@@ -173,7 +172,6 @@ export default function UploadPage() {
         title: title.trim(),
         audio,
         cover,
-        token: getAuthToken(),
         onStep: setStep,
       });
       setDone(track.title);

@@ -9,6 +9,7 @@ import { CreditsModal } from "./CreditsModal";
 import { ReportTrackModal } from "./ReportTrackModal";
 import { CoverImage } from "./CoverImage";
 import { LikeButton } from "./LikeButton";
+import { formatNumber } from "../lib/format";
 import type { CatalogTrack } from "../lib/catalog";
 
 /**
@@ -28,12 +29,6 @@ const VIRTUAL_VIEWPORT_HEIGHT = 560;
  * columna; por debajo de mil sí se muestra entero, porque para un artista
  * que empieza la diferencia entre 8 y 80 escuchas es toda la información.
  */
-function formatPlayCount(plays: number): string {
-  if (plays >= 1_000_000) return `${(plays / 1_000_000).toFixed(1).replace(".", ",").replace(",0", "")} M`;
-  if (plays >= 1_000) return `${(plays / 1_000).toFixed(1).replace(".", ",").replace(",0", "")} mil`;
-  return `${plays}`;
-}
-
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -110,7 +105,7 @@ function TrackRow({ track, index, numbered, isCurrent, onPlay, onRemove, onConte
         className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-muted sm:block"
         title={track.playCount !== undefined ? `${track.playCount} reproducciones` : undefined}
       >
-        {track.playCount !== undefined ? formatPlayCount(track.playCount) : ""}
+        {track.playCount !== undefined ? formatNumber(track.playCount) : ""}
       </span>
 
       <LikeButton trackId={track.id} />

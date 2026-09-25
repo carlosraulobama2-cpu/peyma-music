@@ -41,6 +41,8 @@ export function PlayerDeck() {
    */
   const listenedRef = useRef(0);
   const lastTimeRef = useRef(0);
+  /** true mientras `audio.src` es el blob precargado (sólo los primeros ~2 MB). */
+  const isPrefetchedSourceRef = useRef(false);
   const [showQueue, setShowQueue] = useState(false);
   const [lofiEnabled, setLofi] = useState(false);
   const toggleNowPlaying = useUiStore((s) => s.toggleNowPlaying);
@@ -55,12 +57,16 @@ export function PlayerDeck() {
     // Se reproduce SIEMPRE por nuestro proxy, no por la URL original: es lo
     // que hace que el audio llegue con CORS y que el grafo de Web Audio
     // (visualizador + filtro Lo-Fi) no silencie la salida.
+    const streamUrl = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
     // Si la canción ya está en el búfer de RAM (porque se precargó siendo
     // la siguiente de la cola), se reproduce desde memoria y arranca sin
-    // esperar a la red.
-    audio.src =
-      getPrefetchedUrl(currentTrack.id) ??
-      `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
+    // esperar a la red. El búfer sólo trae los primeros ~2 MB (ver
+    // audioPrefetch.ts): cuando se agoten, el evento `waiting` del propio
+    // `<audio>` avisa, y ahí se cambia a la URL de streaming completa
+    // conservando la posición — si no, la canción se cortaría a mitad.
+    const prefetchedUrl = getPrefetchedUrl(currentTrack.id);
+    isPrefetchedSourceRef.current = prefetchedUrl !== null;
+    audio.src = prefetchedUrl ?? streamUrl;
     initAudioEngine(audio);
     void resumeAudioContext();
     audio.play().catch(() => {
@@ -181,6 +187,18 @@ export function PlayerDeck() {
           setProgress(now);
         }}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onWaiting={(e) => {
+          // El búfer precargado (~2 MB) se agotó: se sigue por la URL de
+          // streaming completa desde donde iba, si no la canción se
+          // quedaría muda a mitad de reproducción.
+          if (!isPrefetchedSourceRef.current || !currentTrack) return;
+          isPrefetchedSourceRef.current = false;
+          const audio = e.currentTarget;
+          const resumeAt = audio.currentTime;
+          audio.src = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
+          audio.currentTime = resumeAt;
+          if (isPlaying) audio.play().catch(() => {});
+        }}
         onEnded={next}
       />
 

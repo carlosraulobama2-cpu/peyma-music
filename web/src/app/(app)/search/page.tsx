@@ -12,7 +12,7 @@ import { ExploreCategories } from "../../../components/ExploreCategories";
 import { ArtistRow } from "../../../components/home/ArtistRow";
 import { MediaCarousel } from "../../../components/home/MediaCarousel";
 
-const EMPTY: SearchResults = { tracks: [], artists: [], albums: [] };
+const EMPTY: SearchResults = { tracks: [], artists: [], albums: [], playlists: [] };
 
 function SearchPageContent() {
   const router = useRouter();
@@ -74,7 +74,7 @@ function SearchPageContent() {
       primaryGenre ? { primaryGenre } : mood ? { mood } : { genre: genreTag! },
     )
       .then((tracks) => {
-        if (!cancelled) setCategoryData({ category: activeCategory, tracks: { tracks, artists: [], albums: [] } });
+        if (!cancelled) setCategoryData({ category: activeCategory, tracks: { tracks, artists: [], albums: [], playlists: [] } });
       })
       .catch(() => {
         if (!cancelled) setCategoryData({ category: activeCategory, tracks: EMPTY });
@@ -107,7 +107,8 @@ function SearchPageContent() {
   // "Cargando" se deriva: o se está buscando texto, o la categoría de la
   // URL todavía no coincide con la que hay cargada.
   const isBusy = searching || Boolean(activeCategory && !query.trim() && !categoryReady);
-  const hasResults = visible.tracks.length > 0 || visible.artists.length > 0 || visible.albums.length > 0;
+  const hasResults =
+    visible.tracks.length > 0 || visible.artists.length > 0 || visible.albums.length > 0 || visible.playlists.length > 0;
 
   return (
     <main className="flex-1 flex flex-col pb-32">
@@ -196,6 +197,20 @@ function SearchPageContent() {
                   const track = visible.tracks.find((t) => t.album.id === album.id);
                   if (track) play(track, visible.tracks);
                 }}
+              />
+            ))}
+          </MediaCarousel>
+        )}
+
+        {!isBusy && visible.playlists.length > 0 && (
+          <MediaCarousel title="Playlists">
+            {visible.playlists.map((playlist) => (
+              <MediaCard
+                key={playlist.id}
+                title={playlist.title}
+                subtitle={`${playlist.ownerName} · ${playlist.trackCount} canción(es)`}
+                coverUrl={playlist.coverUrl ?? ""}
+                onPlay={() => router.push(`/playlists/${playlist.id}`)}
               />
             ))}
           </MediaCarousel>

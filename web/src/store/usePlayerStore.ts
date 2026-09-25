@@ -6,9 +6,10 @@ import type { CatalogTrack } from "../lib/catalog";
 /**
  * Reproductor real de la web (HTML5 `<audio>`, un único elemento compartido
  * — ver PlayerDeck.tsx, que es quien realmente posee el `<audio>` y llama a
- * estas acciones). La sincronización en tiempo real con la app móvil
- * (WebSockets) es una capa aparte, todavía no construida — este store es la
- * fuente de verdad local mientras tanto.
+ * estas acciones). La sincronización en tiempo real con otros dispositivos
+ * (Peyma Connect, ver usePeymaConnect.ts) es una capa aparte que consume
+ * este store desde afuera (`applyRemote`, `remoteDeviceName`); este store
+ * sigue siendo la fuente de verdad local.
  */
 interface PlayerStore {
   currentTrack: CatalogTrack | null;

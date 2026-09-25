@@ -1,4 +1,4 @@
-import { http } from "./httpClient";
+import { http, uploadFile } from "./httpClient";
 
 /**
  * Subida de una canción desde la web.
@@ -28,25 +28,6 @@ export const UPLOAD_STEPS = [
 
 export type UploadStep = 0 | 1 | 2 | 3 | 4;
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
-/**
- * Sube un archivo como multipart.
- *
- * No se fija `Content-Type`: el navegador tiene que generarlo con el
- * `boundary` del FormData, y ponerlo a mano rompe el parseo en el servidor.
- */
-async function uploadFile(path: string, formData: FormData, token: string | null): Promise<void> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: formData });
-  if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(data?.error ?? `Falló la subida (${response.status})`);
-  }
-}
-
 /**
  * Lee la duración real del archivo antes de subirlo.
  *
@@ -73,7 +54,6 @@ export interface UploadParams {
   title: string;
   audio: File;
   cover: File;
-  token: string | null;
   onStep?: (step: UploadStep) => void;
 }
 
@@ -88,7 +68,6 @@ export async function uploadTrack({
   title,
   audio,
   cover,
-  token,
   onStep,
 }: UploadParams): Promise<PublishedTrack> {
   onStep?.(0);
@@ -99,12 +78,12 @@ export async function uploadTrack({
   const audioForm = new FormData();
   audioForm.append("audio", audio);
   if (duration > 0) audioForm.append("durationSeconds", String(Math.round(duration)));
-  await uploadFile(`/uploads/${upload.id}/audio`, audioForm, token);
+  await uploadFile(`/uploads/${upload.id}/audio`, audioForm);
 
   onStep?.(2);
   const coverForm = new FormData();
   coverForm.append("cover", cover);
-  await uploadFile(`/uploads/${upload.id}/cover`, coverForm, token);
+  await uploadFile(`/uploads/${upload.id}/cover`, coverForm);
 
   onStep?.(3);
   await http.post(`/uploads/${upload.id}/analyze`);

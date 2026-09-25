@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { fetchLandingShowcase, type LandingArtist, type LandingTrack } from "../lib/landing";
+import { formatNumber } from "../lib/format";
 
 /**
  * Portada pública — lo que ve alguien que todavía no tiene cuenta.
@@ -44,10 +45,6 @@ const VENTAJAS = [
       "La cola, los me gusta y el punto exacto de la canción viajan entre el navegador y la app del teléfono.",
   },
 ];
-
-function formatearOyentes(valor: number): string {
-  return new Intl.NumberFormat("es").format(valor);
-}
 
 /**
  * Portada de una pieza del catálogo.
@@ -176,7 +173,7 @@ function ArtistChip({ artist }: { artist: LandingArtist }) {
         {artist.isVerified && <VerificadoIcon className="size-3.5 shrink-0 text-sky-400" />}
       </p>
       {artist.listeners > 0 && (
-        <p className="text-xs text-muted">{formatearOyentes(artist.listeners)} oyentes</p>
+        <p className="text-xs text-muted">{formatNumber(artist.listeners)} oyentes</p>
       )}
     </li>
   );

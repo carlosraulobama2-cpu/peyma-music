@@ -85,9 +85,11 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   skipAuth?: boolean;
+  /** Para cancelar peticiones en curso (p. ej. al navegar rápido entre páginas) — igual que en la app. */
+  signal?: AbortSignal;
 }
 
-async function request<T>(path: string, { method = "GET", body, skipAuth }: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, { method = "GET", body, skipAuth, signal }: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
 
   if (!skipAuth) {
@@ -101,8 +103,10 @@ async function request<T>(path: string, { method = "GET", body, skipAuth }: Requ
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError("No se pudo conectar con el servidor. Revisa tu conexión.", 0, "network_error");
   }
 
@@ -139,3 +143,41 @@ export const http = {
   delete: <T>(path: string, options?: Omit<RequestOptions, "method" | "body">) =>
     request<T>(path, { ...options, method: "DELETE" }),
 };
+
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+/**
+ * Subida de archivos (multipart) — misma forma de error que `request()`
+ * (incluido el aviso de mantenimiento), a diferencia de la subida a pelo que
+ * tenía antes `uploadPipeline.ts` con su propio `fetch` y un `Error` plano.
+ *
+ * NO se fija `Content-Type` a mano: el navegador tiene que generarlo con el
+ * `boundary` del FormData, y ponerlo manualmente rompe el parseo del lado
+ * del servidor. Mismo motivo que en la app y el panel.
+ */
+export async function uploadFile<T>(path: string, formData: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: formData });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor. Revisa tu conexión.", 0, "network_error");
+  }
+
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const data = isJson ? await response.json().catch(() => undefined) : undefined;
+
+  if (!response.ok) {
+    const code = (data as { code?: string })?.code;
+    if (response.status === 503 && code === "maintenance_mode") {
+      notifyMaintenance(extractErrorMessage(data, response.status));
+    }
+    throw new ApiError(extractErrorMessage(data, response.status), response.status, code);
+  }
+  return data as T;
+}

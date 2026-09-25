@@ -32,10 +32,7 @@ export function LocationConsentBanner() {
   const [decided, setDecided] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // `locationConsent` puede no venir en sesiones creadas antes de que
-  // existiera el campo: se trata como "no preguntado".
-  const consent = (user as { locationConsent?: string } | null)?.locationConsent;
-  const visible = !decided && Boolean(user) && (consent === undefined || consent === "NOT_ASKED");
+  const visible = !decided && user?.locationConsent === "NOT_ASKED";
 
   const decide = async (consent: "GRANTED" | "DENIED") => {
     setBusy(true);

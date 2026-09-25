@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "../../../lib/AuthProvider";
+import { useAuth, type LocationConsentValue } from "../../../lib/AuthProvider";
 import { http } from "../../../lib/httpClient";
 import { CoverImage } from "../../../components/CoverImage";
 import { uploadAvatar } from "../../../lib/avatarUpload";
@@ -35,8 +35,6 @@ const AVAILABLE_GENRES = [
   "Trap",
 ];
 
-type ConsentValue = "NOT_ASKED" | "GRANTED" | "DENIED";
-
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isLoading, refresh } = useAuth();
@@ -53,7 +51,7 @@ export default function ProfilePage() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [avatarDraft, setAvatarDraft] = useState<string | null>(null);
   const [genresDraft, setGenresDraft] = useState<string[] | null>(null);
-  const [consentDraft, setConsentDraft] = useState<ConsentValue | null>(null);
+  const [consentDraft, setConsentDraft] = useState<LocationConsentValue | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -62,8 +60,7 @@ export default function ProfilePage() {
   const displayName = nameDraft ?? user?.displayName ?? "";
   const avatarUrl = avatarDraft ?? user?.avatarUrl ?? "";
   const genres = genresDraft ?? user?.favoriteGenres ?? [];
-  const consent =
-    consentDraft ?? ((user as { locationConsent?: ConsentValue } | null)?.locationConsent ?? "NOT_ASKED");
+  const consent = consentDraft ?? user?.locationConsent ?? "NOT_ASKED";
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/login");
