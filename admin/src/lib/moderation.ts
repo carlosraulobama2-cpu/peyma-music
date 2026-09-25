@@ -1,5 +1,21 @@
 import { http } from './httpClient';
 
+/** Espejo de `TrackReviewStatus` en `backend/prisma/schema.prisma`. */
+export type TrackReviewStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+
+/**
+ * Etiqueta en español de cada estado — fuente única para todo el panel.
+ * Antes cada pantalla tenía su propio mapa (y a veces ni eso: `UploadPage`
+ * mostraba el código crudo del backend sin traducir) y podían decir cosas
+ * distintas para el mismo estado ("Aprobado" acá, "Publicada" en la ficha
+ * de artista).
+ */
+export const STATUS_LABEL: Record<TrackReviewStatus, string> = {
+  PENDING_REVIEW: 'Pendiente',
+  APPROVED: 'Aprobado',
+  REJECTED: 'Rechazado',
+};
+
 export interface ModerationTrack {
   id: string;
   title: string;
@@ -9,7 +25,7 @@ export interface ModerationTrack {
   genre: string | null;
   mood: string | null;
   createdAt: string;
-  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+  status: TrackReviewStatus;
   isExplicit: boolean;
   artist: { id: string; name: string; imageUrl: string; isVerified: boolean };
   /// Nulo en pistas que todavía no pasaron por el análisis de audio.

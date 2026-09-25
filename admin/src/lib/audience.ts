@@ -1,12 +1,8 @@
 import { http } from './httpClient';
+import { formatHoursMinutes } from './format';
 
 /** Formatea segundos como "12 h 34 min" o "34 min". */
-export function formatHours(seconds: number): string {
-  const totalMinutes = Math.round(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
+export const formatHours = formatHoursMinutes;
 
 export interface TopListener {
   userId: string;

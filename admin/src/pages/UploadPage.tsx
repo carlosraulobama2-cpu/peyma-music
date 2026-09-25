@@ -12,6 +12,7 @@ import {
   describeAudioRejection,
   describeCoverRejection,
 } from '../lib/fileTypes';
+import { STATUS_LABEL, type TrackReviewStatus } from '../lib/moderation';
 
 /** Los pasos que realmente ejecuta el pipeline del backend, en orden. */
 const STEPS = ['Creando borrador', 'Subiendo audio', 'Subiendo portada', 'Analizando ritmo', 'Publicando'] as const;
@@ -28,7 +29,7 @@ export function UploadPage() {
 
   const [stepIndex, setStepIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ title: string; status: string } | null>(null);
+  const [done, setDone] = useState<{ title: string; status: TrackReviewStatus } | null>(null);
   /**
    * Vacía los campos de archivo al terminar. Un `<input type="file">` no es
    * controlado: poner el estado a null no borra lo que enseña el navegador,
@@ -182,7 +183,7 @@ export function UploadPage() {
             <div className="rounded-lg bg-brand/10 px-4 py-3 text-sm ring-1 ring-inset ring-brand/30">
               <p className="font-semibold text-brand">Se subió &ldquo;{done.title}&rdquo;</p>
               <p className="mt-1 text-muted">
-                Quedó en estado <span className="font-mono">{done.status}</span>. Aprobala desde{' '}
+                Quedó en estado <span className="font-semibold">{STATUS_LABEL[done.status]}</span>. Aprobala desde{' '}
                 <button type="button" onClick={() => navigate('/moderation')} className="font-semibold text-foreground underline">
                   Moderación
                 </button>{' '}

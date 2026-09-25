@@ -4,6 +4,7 @@ import { ArrowLeft, Play, Lock, Globe, Sparkles, ShieldOff, Clock, Music } from 
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { fetchPlaylistDetail, type AdminPlaylistDetail } from '../lib/audience';
+import { formatDuration, formatHoursMinutes } from '../lib/format';
 
 /**
  * Detalle de una playlist de usuario.
@@ -11,19 +12,6 @@ import { fetchPlaylistDetail, type AdminPlaylistDetail } from '../lib/audience';
  * Responde a lo que hace falta para juzgarla de un vistazo: cuántas
  * canciones reúne, cuánto se escucha cada una y cuánto suman entre todas.
  */
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-/** Duración total en horas y minutos: "4 h 12 min" lee mejor que "252:00". */
-function formatTotal(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
-}
 
 export function PlaylistDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -117,7 +105,7 @@ export function PlaylistDetailPage() {
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Tile icon={<Music size={16} aria-hidden />} label="Canciones" value={totalTracks.toLocaleString('es')} />
         <Tile icon={<Play size={16} aria-hidden />} label="Reproducciones" value={totalPlays.toLocaleString('es')} />
-        <Tile icon={<Clock size={16} aria-hidden />} label="Duración" value={formatTotal(totalSeconds)} />
+        <Tile icon={<Clock size={16} aria-hidden />} label="Duración" value={formatHoursMinutes(totalSeconds)} />
       </div>
 
       {/*

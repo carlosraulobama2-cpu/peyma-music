@@ -6,12 +6,7 @@ import { StatusBadge } from './StatusBadge';
 import { ReasonModal } from './ReasonModal';
 import { AudioPreview } from './AudioPreview';
 import type { ModerationTrack } from '../lib/moderation';
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+import { formatDuration } from '../lib/format';
 
 interface TrackRowProps {
   track: ModerationTrack;

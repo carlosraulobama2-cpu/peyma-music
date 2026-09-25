@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken } from '../lib/httpClient';
-import { AuthContext, AuthError, type AdminUser } from '../lib/authContext';
+import { AuthContext, AuthError, type AuthenticatedAdmin } from '../lib/authContext';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
+  const [user, setUser] = useState<AuthenticatedAdmin | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     http
-      .get<{ user: AdminUser }>('/auth/me')
+      .get<{ user: AuthenticatedAdmin }>('/auth/me')
       .then(({ user }) => setUser(user))
       .catch((error) => {
         if (error instanceof ApiError && error.status === 401) clearAuthToken();
@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setIsSubmitting(true);
     try {
-      const { user, token } = await http.post<{ user: AdminUser; token: string }>(
+      const { user, token } = await http.post<{ user: AuthenticatedAdmin; token: string }>(
         '/auth/login',
         { email: email.trim().toLowerCase(), password },
         { skipAuth: true },

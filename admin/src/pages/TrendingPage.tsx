@@ -5,17 +5,11 @@ import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { fetchTrending, formatHours, type TrendingRow } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
+import { formatDuration } from '../lib/format';
 
 /** Miles con separador, igual que en el Tablero: 48.210, no 48210. */
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('es').format(value);
-}
-
-/** Duración de una pista como m:ss. */
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 const WINDOWS = [

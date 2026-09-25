@@ -1,7 +1,10 @@
 import { http } from './httpClient';
+import type { Role } from './authContext';
 
-export type UserRole = 'USER' | 'ARTIST' | 'ADMIN';
+/** Mismo tipo que `Role` en `authContext.ts` — se re-exporta con este nombre porque acá describe el rol de un usuario cualquiera, no el de la sesión del panel. */
+export type UserRole = Role;
 
+/** Un usuario gestionado desde el panel — no confundir con `AuthenticatedAdmin` de `lib/authContext.ts`, que es la sesión del propio panel. */
 export interface AdminUser {
   id: string;
   email: string;

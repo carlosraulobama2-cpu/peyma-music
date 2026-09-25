@@ -8,6 +8,7 @@ import {
   type ExtractedTrack,
   type AdminArtist,
 } from '../lib/artists';
+import { formatDuration } from '../lib/format';
 
 /**
  * Importar una canción desde una URL.
@@ -34,12 +35,6 @@ const SOURCE_LABEL: Record<ExtractedTrack['metadataSource'], string> = {
   opengraph: 'metadatos de la página',
   filename: 'nombre del archivo',
 };
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 export function ImportUrlModal({ onClose, onImported }: ImportUrlModalProps) {
   const [url, setUrl] = useState('');

@@ -1,8 +1,10 @@
 import { createContext } from 'react';
 
+/** Espejo de `Role` en `backend/prisma/schema.prisma` — única fuente para todo el panel (ver `users.ts`). */
 export type Role = 'USER' | 'ARTIST' | 'ADMIN';
 
-export interface AdminUser {
+/** La cuenta de administrador con sesión abierta en el panel — no confundir con `AdminUser` de `lib/users.ts`, que es un usuario cualquiera gestionado DESDE el panel. */
+export interface AuthenticatedAdmin {
   id: string;
   email: string;
   displayName: string;
@@ -41,7 +43,7 @@ export class AuthError extends Error {
 }
 
 export interface AuthContextValue {
-  user: AdminUser | null;
+  user: AuthenticatedAdmin | null;
   isLoading: boolean;
   isSubmitting: boolean;
   login: (email: string, password: string) => Promise<void>;

@@ -12,6 +12,8 @@ import {
   type AdminArtistDetail,
   type AdminArtistTrack,
 } from '../lib/artists';
+import { formatDuration } from '../lib/format';
+import { STATUS_LABEL } from '../lib/moderation';
 
 /**
  * Ficha de un artista.
@@ -26,19 +28,6 @@ import {
  * actúa una vez. Ir de una en una con un clic por canción es donde se
  * cometen los errores.
  */
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  APPROVED: 'Publicada',
-  PENDING_REVIEW: 'Pendiente',
-  REJECTED: 'Rechazada',
-  DRAFT: 'Borrador',
-};
 
 export function ArtistDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -243,7 +232,7 @@ export function ArtistDetailPage() {
                     )}
                     {track.status !== 'APPROVED' && (
                       <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-muted">
-                        {STATUS_LABEL[track.status] ?? track.status}
+                        {STATUS_LABEL[track.status]}
                       </span>
                     )}
                   </p>

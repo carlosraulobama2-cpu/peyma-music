@@ -1,4 +1,5 @@
 import { http } from './httpClient';
+import type { TrackReviewStatus } from './moderation';
 
 export interface AdminArtist {
   id: string;
@@ -45,7 +46,7 @@ export interface AdminArtistTrack {
   coverUrl: string;
   duration: number;
   genre: string | null;
-  status: string;
+  status: TrackReviewStatus;
   isBlocked: boolean;
   blockedReason: string | null;
   createdAt: string;
@@ -65,7 +66,7 @@ export interface AdminArtistDetail {
     monthlyListeners: number;
     totalStreams: number;
     streamsLast14Days: number[];
-    topTracks: { trackId: string; title: string; streams: number }[];
+    topTracks: { trackId: string; title: string; coverUrl: string | null; duration: number; streams: number }[];
   };
   denunciasPendientes: number;
   tracks: AdminArtistTrack[];

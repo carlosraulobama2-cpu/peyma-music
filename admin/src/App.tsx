@@ -19,9 +19,10 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 
 /**
- * Las secciones del panel están declaradas en `AdminShell` (`NAV_SECTIONS`);
- * acá sólo se montan. Al añadir una sección hay que tocar los dos sitios: la
- * lista de navegación y esta tabla de rutas.
+ * Las secciones del panel están declaradas en `lib/navigation.ts`
+ * (`NAV_SECTIONS`), no acá — `AdminShell` sólo las importa, igual que este
+ * archivo. Al añadir una sección hay que tocar los dos sitios: esa lista de
+ * navegación y esta tabla de rutas.
  */
 const PROTECTED_ROUTES = [
   { path: '/dashboard', element: <DashboardPage /> },
