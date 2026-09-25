@@ -98,12 +98,15 @@ router.use(authMiddleware, requireRole('ADMIN'));
 const TRACK_WITH_DETAILS = {
   include: {
     artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
-    album: { select: { id: true, title: true, coverUrl: true } },
+    album: { select: { id: true, title: true, coverUrl: true, type: true } },
     uploadedBy: { select: { id: true, displayName: true, email: true } },
     // La onda y la sonoridad se incluyen para que el revisor vea de un
     // vistazo si la pista está vacía, recortada o con el volumen disparado,
     // antes siquiera de darle al play.
     analysis: { select: { bpm: true, waveformPeaks: true, integratedLufs: true, truePeakDb: true } },
+    // Compositor, productor, remixer… lo que el creador cargó al subir —
+    // sin esto el revisor aprobaba a ciegas quién cobra qué.
+    credits: { select: { id: true, role: true, name: true, artistId: true, splitPercent: true } },
   },
 } as const;
 
@@ -124,6 +127,47 @@ router.get('/moderation/pending', async (req: AuthRequest, res: Response) => {
   ]);
 
   res.json({ tracks, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+});
+
+/**
+ * Lanzamientos (EP/álbum) con al menos una pista pendiente, agrupados por
+ * álbum — la vista que hace falta cuando alguien sube un disco entero y el
+ * revisor quiere verlo como UNA entrega, con sus créditos, en vez de ir
+ * cazando sus canciones una por una entre todo lo demás en
+ * `/moderation/pending`. Un sencillo no entra: nace como álbum de una sola
+ * pista (ver routes/uploads.ts) y esa cola ya lo cubre bien.
+ */
+router.get('/releases/pending', async (_req: AuthRequest, res: Response) => {
+  const tracks = await prisma.track.findMany({
+    where: { status: 'PENDING_REVIEW', album: { type: { in: ['EP', 'ALBUM'] } } },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      ...TRACK_WITH_DETAILS.include,
+      album: {
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          type: true,
+          releaseYear: true,
+          artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
+        },
+      },
+    },
+  });
+
+  const releasesById = new Map<string, { album: (typeof tracks)[number]['album']; tracks: typeof tracks }>();
+  for (const track of tracks) {
+    const existing = releasesById.get(track.album.id);
+    if (existing) existing.tracks.push(track);
+    else releasesById.set(track.album.id, { album: track.album, tracks: [track] });
+  }
+
+  const releases = [...releasesById.values()].sort(
+    (a, b) => a.tracks[0]!.createdAt.getTime() - b.tracks[0]!.createdAt.getTime(),
+  );
+
+  res.json({ releases });
 });
 
 router.patch('/moderation/:id/review', async (req: AuthRequest, res: Response) => {

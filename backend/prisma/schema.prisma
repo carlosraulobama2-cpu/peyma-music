@@ -98,6 +98,17 @@ enum CreditRole {
   MASTERING_ENGINEER
 }
 
+/// Qué es un lanzamiento: un sencillo se crea solo al publicar una pista sin
+/// álbum elegido (ver routes/uploads.ts) — nunca lo elige quien sube. EP y
+/// ÁLBUM sí los elige el artista al crear el álbum antes de subir sus
+/// pistas, y son los dos tipos que entran a la cola de aprobación de
+/// lanzamientos del panel (un sencillo ya se revisa como pista suelta).
+enum AlbumType {
+  SINGLE
+  EP
+  ALBUM
+}
+
 /// Qué alimenta una sección editorial de la portada de la app.
 enum EditorialKind {
   MANUAL // el curador elige las pistas/álbumes a mano
@@ -306,6 +317,10 @@ model Album {
   releaseDate DateTime?
   /// Color dominante de la portada en HEX, calculado al procesar el artwork.
   dominantColor String?
+  /// SINGLE por defecto: es lo que crea el propio backend para un sencillo.
+  /// Un EP/ÁLBUM sólo nace con este campo puesto a mano, al crearlo desde
+  /// `POST /albums` antes de subirle canciones.
+  type        AlbumType @default(SINGLE)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -798,6 +813,12 @@ model TrackUpload {
   analysisDraft     Json?
   genreOverride     Genre?
   moodOverride      String?
+
+  /// Borrador de créditos: `[{ role, name, artistId?, splitPercent? }, …]`.
+  /// Se copia a filas `TrackCredit` recién al publicar, igual que
+  /// `analysisDraft` — así el creador puede corregirlos las veces que haga
+  /// falta mientras el draft siga vivo, sin tocar el catálogo público.
+  creditsDraft      Json?
 
   publishedTrackId  String?      @unique
   publishedTrack    Track?       @relation(fields: [publishedTrackId], references: [id])

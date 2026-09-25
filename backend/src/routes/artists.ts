@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { authMiddleware, optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
-import { createArtistSchema, querySchema, idParamSchema } from '../schemas/validation';
+import { createArtistSchema, updateMyArtistProfileSchema, querySchema, idParamSchema } from '../schemas/validation';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { getArtistStats, getMonthlyListeners, getMonthlyListenersBulk } from '../services/artistStats';
 import { getPlayCounts } from '../services/audienceStats';
@@ -138,6 +138,36 @@ router.get('/me/profile', authMiddleware, async (req: AuthRequest, res: Response
     include: { _count: { select: { albums: true, tracks: true, followers: true } } },
   });
   res.json({ artist });
+});
+
+/**
+ * Edita el perfil del propio artista: nombre, foto, bio y géneros.
+ *
+ * Antes esto sólo existía como un `set()` local en el store de la app —
+ * parecía guardar, pero nunca llegaba al servidor: nadie más (ni otro
+ * dispositivo de la misma cuenta, ni el panel admin, ni quien ve el perfil)
+ * veía el cambio, y `refreshStats()` no lo pisaba de pura casualidad, porque
+ * no toca `name`/`bio`/`genres`. Esta ruta es la que realmente falta.
+ *
+ * `genres` es donde un artista declara sus propios ritmos (incluida
+ * "Cristiana" si es su caso) — de ahí sale la tarjeta correspondiente en
+ * Explorar, sin que un administrador tenga que tocar nada (ver routes/genres.ts
+ * y `api.getGenres()` en la app, que leen `Artist.genres` directamente).
+ */
+router.patch('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const data = updateMyArtistProfileSchema.parse(req.body);
+
+  const artist = await prisma.artist.findFirst({ where: { ownerId: req.user!.id }, select: { id: true } });
+  if (!artist) throw new NotFoundError('Perfil de artista');
+
+  const updated = await prisma.artist.update({
+    where: { id: artist.id },
+    data,
+    include: { _count: { select: { albums: true, tracks: true, followers: true } } },
+  });
+
+  const monthlyListeners = await getMonthlyListeners(artist.id);
+  res.json({ artist: { ...updated, monthlyListeners } });
 });
 
 /**

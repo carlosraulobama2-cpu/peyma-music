@@ -91,11 +91,28 @@ export const createArtistSchema = z.object({
   bio: z.string().trim().max(2000).optional(),
 });
 
+export const updateMyArtistProfileSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    imageUrl: z.string().url().optional(),
+    bio: z.string().trim().max(2000).nullable().optional(),
+    // Texto libre y no el `genreEnum` cerrado: es el mismo campo que ya
+    // alimenta las tarjetas de Explorar por artista (ver routes/genres.ts) y
+    // por eso admite cualquier ritmo, incluidos los que no están en el
+    // catálogo fijo de Track.genre — "Cristiana" entre ellos.
+    genres: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'Nada para actualizar' });
+
 export const createAlbumSchema = z.object({
   title: z.string().trim().min(1).max(200),
   artistId: z.string().cuid(),
   coverUrl: z.string().url(),
   releaseYear: z.number().int().min(1900).max(new Date().getFullYear() + 1),
+  // Sin SINGLE: un sencillo nace solo, dentro del pipeline de subida (ver
+  // routes/uploads.ts), nunca por esta ruta — quien crea un álbum a mano
+  // desde la app está armando un EP o un ÁLBUM a propósito.
+  type: z.enum(['EP', 'ALBUM']).default('ALBUM'),
 });
 
 export const createPlaylistSchema = z.object({
@@ -155,6 +172,29 @@ export const createUploadSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
 });
 
+// Mismo universo que el enum `CreditRole` de Prisma.
+export const CREDIT_ROLE_VALUES = [
+  'MAIN_ARTIST',
+  'FEATURED_ARTIST',
+  'REMIXER',
+  'PRODUCER',
+  'COMPOSER',
+  'WRITER',
+  'MIX_ENGINEER',
+  'MASTERING_ENGINEER',
+] as const;
+export const creditRoleEnum = z.enum(CREDIT_ROLE_VALUES);
+
+export const creditDraftSchema = z.object({
+  role: creditRoleEnum,
+  name: z.string().trim().min(1).max(200),
+  // Sólo cuando la persona acreditada tiene perfil en la plataforma (p. ej.
+  // un artista invitado) — texto libre en `name` cubre a todos los demás
+  // (compositores, productores que no son usuarios de Peyma Music).
+  artistId: z.string().cuid().nullable().optional(),
+  splitPercent: z.number().min(0).max(100).nullable().optional(),
+});
+
 export const updateUploadMetadataSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
@@ -168,6 +208,7 @@ export const updateUploadMetadataSchema = z
       .max(2000)
       .nullable()
       .optional(),
+    creditsDraft: z.array(creditDraftSchema).max(20).nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'Nada para actualizar' });
 
@@ -419,6 +460,7 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type CreateTrackInput = z.infer<typeof createTrackSchema>;
 export type UpdateTrackInput = z.infer<typeof updateTrackSchema>;
 export type CreateArtistInput = z.infer<typeof createArtistSchema>;
+export type UpdateMyArtistProfileInput = z.infer<typeof updateMyArtistProfileSchema>;
 export type CreateAlbumInput = z.infer<typeof createAlbumSchema>;
 export type CreatePlaylistInput = z.infer<typeof createPlaylistSchema>;
 export type UpdatePlaylistInput = z.infer<typeof updatePlaylistSchema>;
@@ -429,6 +471,7 @@ export type IdParam = z.infer<typeof idParamSchema>;
 export type TrackParam = z.infer<typeof trackParamSchema>;
 export type CreateUploadInput = z.infer<typeof createUploadSchema>;
 export type UpdateUploadMetadataInput = z.infer<typeof updateUploadMetadataSchema>;
+export type CreditDraft = z.infer<typeof creditDraftSchema>;
 export type GeneratePlaylistInput = z.infer<typeof generatePlaylistSchema>;
 export type ReviewTrackInput = z.infer<typeof reviewTrackSchema>;
 export type LogStreamInput = z.infer<typeof logStreamSchema>;
