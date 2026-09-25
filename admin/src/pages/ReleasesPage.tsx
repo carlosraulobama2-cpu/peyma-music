@@ -21,19 +21,23 @@ export function ReleasesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const { pendingTrackId, approve, reject, error: actionError } = useReviewTrack();
 
-  const refresh = useCallback(() => {
-    setLoading(true);
-    setLoadError(null);
-    fetchPendingReleases()
-      .then((res) => setReleases(res.releases))
-      .catch((err) => setLoadError(err instanceof Error ? err.message : 'No se pudieron cargar los lanzamientos.'))
-      .finally(() => setLoading(false));
-  }, []);
+  /**
+   * Trae los lanzamientos. No toca el estado de forma SÍNCRONA: todo lo que
+   * escribe va dentro de los callbacks de la promesa, lo que permite
+   * llamarla desde el efecto de montaje sin provocar un render en cascada.
+   */
+  const cargar = useCallback(
+    () =>
+      fetchPendingReleases()
+        .then((res) => setReleases(res.releases))
+        .catch((err) => setLoadError(err instanceof Error ? err.message : 'No se pudieron cargar los lanzamientos.'))
+        .finally(() => setLoading(false)),
+    [],
+  );
 
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect
-    refresh();
-  }, [refresh]);
+    void cargar();
+  }, [cargar]);
 
   const removeTrack = (albumId: string, trackId: string) => {
     setReleases((prev) =>

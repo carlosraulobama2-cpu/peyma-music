@@ -58,6 +58,23 @@ function assertSafeUrl(rawUrl: string): URL {
  * quién puede pedirlo, y eso se decide antes de llamar acá.
  */
 export async function pipeAudio(audioUrl: string, req: Request, res: Response): Promise<void> {
+  /**
+   * El audio se sirve a otros orígenes: hay que relajar aquí la política que
+   * `helmet()` aplica a toda la API.
+   *
+   * Por defecto helmet manda `Cross-Origin-Resource-Policy: same-origin`, que
+   * es lo correcto para JSON pero rompe el audio en cuanto quien lo pide no
+   * está en el mismo origen — y nunca lo está: la API es `peyma-api`, la web
+   * `peyma-web` y el panel `peyma-admin` (en local, 3000, 3001 y 5173).
+   *
+   * CORP no es CORS. Aunque el origen esté permitido en `CORS_ORIGINS`, un
+   * `<audio src>` viaja como petición `no-cors` y el navegador DESCARTA la
+   * respuesta por CORP sin mirar las cabeceras de CORS y sin llegar a seguir
+   * la redirección al bucket. El síntoma era que revisar una canción en el
+   * panel antes de aprobarla no reproducía nada.
+   */
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
   // Las subidas propias ya se sirven como estáticos desde /uploads (mismo
   // origen), no hace falta proxearlas.
   if (audioUrl.startsWith('/uploads/')) {

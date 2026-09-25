@@ -43,54 +43,34 @@ import {
 import { audioAnalyzer, type AudioAnalysisResult } from '../services/audioAnalysis';
 import { enqueue } from '../services/jobQueue';
 import { isFfmpegAvailable, probeDurationSeconds } from '../services/ffmpeg';
+import { AUDIO_MIME_TYPES, IMAGE_MIME_TYPES, resolveMediaType } from '../services/mediaTypes';
 import { z } from 'zod';
 
 const router = Router();
 
-const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg', 'audio/flac']);
-const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_AUDIO_BYTES = 40 * 1024 * 1024; // 40MB — de sobra para un track comprimido
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 
 /**
- * Tipo de contenido por extensión, para cuando el cliente no sabe decirlo.
+ * ¿Se admite este archivo? Si el tipo declarado no sirve pero la extensión sí,
+ * corrige `file.mimetype` para que el resto del camino vea un tipo bueno.
  *
- * En Windows el navegador saca `file.type` del registro del sistema
- * (`HKEY_CLASSES_ROOT.mp3Content Type`), una clave que pisa cualquier
- * reproductor que se instale y que en muchos equipos falta. Cuando falta, un
- * MP3 perfectamente válido llega aquí sin tipo o como
- * `application/octet-stream` y el filtro lo tiraba, con el mensaje inútil de
- * "el formato no es válido". Lo mismo con las portadas.
+ * Hace falta porque en Windows el navegador saca `file.type` del registro del
+ * sistema, una clave que pisa cualquier reproductor que se instale y que en
+ * muchos equipos falta o miente (`.mpeg` figura como `video/mpeg`). Sin esto,
+ * un MP3 perfectamente válido llega sin tipo y el filtro lo tira con el
+ * mensaje inútil de "el formato no es válido".
  *
  * Los clientes ya lo corrigen por su cuenta, pero esto tiene que aguantar
- * igual: el servidor recibe subidas de la web, del panel, de la app y de
- * curl, y la regla de qué se admite vive aquí.
- */
-const MIME_BY_EXTENSION: Record<string, string> = {
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.m4a': 'audio/mp4',
-  '.ogg': 'audio/ogg',
-  '.flac': 'audio/flac',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-};
-
-/**
- * ¿Se admite este archivo? Si el tipo declarado no sirve pero la extensión
- * sí, corrige `file.mimetype` para que el resto del camino vea un tipo bueno.
+ * igual: el servidor recibe subidas de la web, del panel, de la app y de curl.
+ * La lista de formatos es la de `services/mediaTypes.ts`, que es también la
+ * que usa el almacenamiento para decidir con qué tipo servir el objeto — que
+ * fueran dos listas distintas ya costó una canción que se subía y no sonaba.
  */
 function acceptByTypeOrExtension(file: Express.Multer.File, allowed: Set<string>): boolean {
-  if (allowed.has(file.mimetype)) return true;
-
-  const dot = file.originalname.lastIndexOf('.');
-  if (dot < 0) return false;
-  const guess = MIME_BY_EXTENSION[file.originalname.slice(dot).toLowerCase()];
-  if (!guess || !allowed.has(guess)) return false;
-
-  file.mimetype = guess;
+  const resolved = resolveMediaType(file.mimetype, file.originalname, allowed);
+  if (!resolved) return false;
+  file.mimetype = resolved;
   return true;
 }
 
@@ -325,7 +305,9 @@ router.post('/:id/audio', authMiddleware, audioUpload.single('audio'), async (re
 
   const durationSeconds = z.coerce.number().positive().max(3600 * 6).optional().parse(req.body?.durationSeconds);
 
-  const stored = await storageService.saveFile(id, 'audio', req.file.buffer, req.file.originalname);
+  // El tipo va explícito: es el que el filtro validó (y corrigió, si el
+  // navegador no supo decirlo), y es con el que hay que servir el objeto.
+  const stored = await storageService.saveFile(id, 'audio', req.file.buffer, req.file.originalname, req.file.mimetype);
   const upload = await prisma.trackUpload.update({
     where: { id },
     data: { audioUrl: stored.url, durationSeconds: durationSeconds ?? null },
@@ -342,7 +324,7 @@ router.post('/:id/cover', authMiddleware, coverUpload.single('cover'), async (re
 
   if (!req.file) throw new BadRequestError('Falta la imagen de portada (campo "cover") o el formato no es válido');
 
-  const stored = await storageService.saveFile(id, 'cover', req.file.buffer, req.file.originalname);
+  const stored = await storageService.saveFile(id, 'cover', req.file.buffer, req.file.originalname, req.file.mimetype);
   const upload = await prisma.trackUpload.update({ where: { id }, data: { coverUrl: stored.url }, ...UPLOAD_WITH_DETAILS });
 
   res.json({ upload });
@@ -386,10 +368,13 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res: Respon
         // Se guarda para que `publish` la copie al Track: es el único sitio
         // del que sale `Track.duration`.
         durationSeconds: durationSeconds > 0 ? durationSeconds : null,
-        // Sugerencia del análisis como valor por defecto — el creador la
-        // puede pisar en el PATCH de revisión antes de publicar.
-        genreOverride: upload.genreOverride ?? result.suggestedGenre,
-        moodOverride: upload.moodOverride ?? result.suggestedMood,
+        // Lo que haya elegido el creador. El análisis ya no sugiere género
+        // ni ánimo (ver el comentario de `suggestedGenre` en
+        // services/audioAnalysis.ts): antes rellenaba estos dos campos al
+        // azar, así que una canción sin género elegido salía publicada con
+        // una etiqueta inventada en vez de sin etiqueta.
+        genreOverrideId: upload.genreOverrideId,
+        moodOverride: upload.moodOverride,
         errorMessage: null,
       },
       ...UPLOAD_WITH_DETAILS,
@@ -409,7 +394,7 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res: Respon
 router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);
   const existing = await requireEditableUpload(id, req.user!.id);
-  const { albumId, lyricsSyncedDraft, creditsDraft, ...rest } = updateUploadMetadataSchema.parse(req.body);
+  const { albumId, genreOverrideId, lyricsSyncedDraft, creditsDraft, ...rest } = updateUploadMetadataSchema.parse(req.body);
 
   if (albumId) {
     const album = await prisma.album.findUnique({ where: { id: albumId } });
@@ -426,6 +411,11 @@ router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => 
       // álbum, volver a "sencillo") Prisma pide desconectar la relación, no
       // asignar `null` al campo escalar directamente.
       ...(albumId !== undefined ? { album: albumId ? { connect: { id: albumId } } : { disconnect: true } } : {}),
+      // Mismo motivo que `albumId`: el género pasó de columna escalar a
+      // relación con `MusicGenre`, así que quitarlo es desconectar.
+      ...(genreOverrideId !== undefined
+        ? { genreOverride: genreOverrideId ? { connect: { id: genreOverrideId } } : { disconnect: true } }
+        : {}),
       // Mismo motivo para un campo Json nullable: `null` a secas no tipa,
       // Prisma pide el sentinel `Prisma.JsonNull` para "poné SQL NULL".
       ...(lyricsSyncedDraft !== undefined
@@ -495,7 +485,7 @@ router.post('/:id/publish', authMiddleware, async (req: AuthRequest, res: Respon
         duration: upload.durationSeconds ?? 0,
         coverUrl: upload.coverUrl!,
         audioUrl: upload.audioUrl!,
-        genre: upload.genreOverride,
+        genreId: upload.genreOverrideId,
         mood: upload.moodOverride,
         // Todo lo que sale del pipeline de subida entra a la cola de
         // moderación admin — distinto del default `APPROVED` del esquema,

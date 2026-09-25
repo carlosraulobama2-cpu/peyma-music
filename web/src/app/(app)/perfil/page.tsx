@@ -8,6 +8,7 @@ import { http } from "../../../lib/httpClient";
 import { CoverImage } from "../../../components/CoverImage";
 import { uploadAvatar } from "../../../lib/avatarUpload";
 import { IMAGE_ACCEPT } from "../../../lib/fileTypes";
+import { fetchGenreOptions } from "../../../lib/genres";
 import { TERMS, PRIVACY, TERMS_UPDATED_LABEL } from "../../../lib/legal";
 
 /**
@@ -21,19 +22,6 @@ import { TERMS, PRIVACY, TERMS_UPDATED_LABEL } from "../../../lib/legal";
  * en el panel de control y no aquí: son decisiones de quien opera Peyma,
  * no del oyente.
  */
-
-const AVAILABLE_GENRES = [
-  "Electrónica",
-  "Indie Pop",
-  "Rock Alternativo",
-  "Hip Hop",
-  "Jazz",
-  "Ambient",
-  "Lo-Fi",
-  "Clásica",
-  "Reguetón",
-  "Trap",
-];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -51,6 +39,13 @@ export default function ProfilePage() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [avatarDraft, setAvatarDraft] = useState<string | null>(null);
   const [genresDraft, setGenresDraft] = useState<string[] | null>(null);
+  /**
+   * Los géneros salen del catálogo real, como en el alta y como en la app.
+   * Se piden una vez al montar; si fallan, `fetchGenreOptions` ya devuelve
+   * una lista de reserva y el formulario sigue siendo usable.
+   */
+  const [opcionesGenero, setOpcionesGenero] = useState<string[]>([]);
+
   const [consentDraft, setConsentDraft] = useState<LocationConsentValue | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -69,6 +64,18 @@ export default function ProfilePage() {
   const toggleGenre = (genre: string) => {
     setGenresDraft(genres.includes(genre) ? genres.filter((g) => g !== genre) : [...genres, genre]);
   };
+  useEffect(() => {
+    let cancelado = false;
+    fetchGenreOptions(user?.favoriteGenres ?? [])
+      .then((opciones) => {
+        if (!cancelado) setOpcionesGenero(opciones);
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [user?.favoriteGenres]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -200,7 +207,7 @@ export default function ProfilePage() {
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-sm font-semibold">Géneros favoritos</legend>
           <div className="flex flex-wrap gap-2">
-            {AVAILABLE_GENRES.map((genre) => (
+            {opcionesGenero.map((genre) => (
               <button
                 key={genre}
                 type="button"

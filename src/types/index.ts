@@ -8,7 +8,17 @@
  * `Track` lo referencia directamente — `music.ts` lo re-exporta desde acá
  * para no crear una dependencia circular entre los dos archivos.
  */
-export type Genre = 'lofi' | 'jazz' | 'ambient' | 'pop' | 'hiphop' | 'classical' | 'electronic' | 'rock';
+/**
+ * Slug de un ritmo del catálogo (`MusicGenre` en el backend).
+ *
+ * Era una unión cerrada con los mismos ocho valores que el enum de Postgres
+ * — lofi, jazz, ambient, pop, hiphop, classical, electronic, rock — y había
+ * que mantenerla a mano en paralelo al backend. Ese enum ya no existe: el
+ * vocabulario vive en una tabla que se edita desde Ritmos en el panel, así
+ * que aquí no se puede enumerar sin volver a desincronizarse. Entre esos
+ * ocho, por cierto, no estaban ni trap ni rap ni drill.
+ */
+export type Genre = string;
 
 export interface Track {
   id: string;

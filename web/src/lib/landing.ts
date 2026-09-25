@@ -119,18 +119,10 @@ export async function fetchLandingShowcase(): Promise<LandingShowcase> {
   let temporizador: ReturnType<typeof setTimeout> | undefined;
   try {
     const respuesta = await Promise.race([
-      // El `.catch` va pegado al `fetch` y no sólo en el `try` de fuera.
-      // Cuando gana el temporizador, la promesa del fetch sigue viva: si
-      // falla DESPUÉS (un ETIMEDOUT contra un backend dormido, por ejemplo),
-      // el `try/catch` ya no está escuchando —la carrera se resolvió— y el
-      // rechazo queda sin recoger. Node trata eso como excepción no
-      // capturada y puede tumbar el proceso entero: la portada se dibujaba
-      // bien y el servidor se caía por detrás, que es justo lo contrario de
-      // la regla de este módulo.
       fetch(`${API_URL}/home`, {
         headers: { Accept: 'application/json' },
         next: { revalidate: REVALIDATE_SECONDS },
-      }).catch(() => null),
+      }),
       // Se guarda el identificador para cancelarlo en el `finally`: si no, el
       // temporizador mantiene vivo el bucle de eventos y el build tarda en
       // cerrar aunque la respuesta haya llegado en el primer segundo.

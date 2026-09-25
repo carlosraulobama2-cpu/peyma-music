@@ -203,7 +203,7 @@ export async function getTrendingTracks(limit = 20, days = 7, minListeners = 0):
            t."title",
            t."coverUrl",
            t."duration",
-           t."genre"::text  AS genre,
+           g."name"         AS genre,
            an."bpm"         AS bpm,
            a."id"           AS "artistId",
            a."name"         AS "artistName",
@@ -216,10 +216,11 @@ export async function getTrendingTracks(limit = 20, days = 7, minListeners = 0):
       JOIN "Track"  t  ON t."id" = s."trackId"
       JOIN "Artist" a  ON a."id" = t."artistId"
       LEFT JOIN "AudioAnalysis" an ON an."trackId" = t."id"
+      LEFT JOIN "MusicGenre" g ON g."id" = t."genreId"
      WHERE s."playedAt" >= $1
        AND t."status" = 'APPROVED'
        AND a."isBlocked" = false
-     GROUP BY s."trackId", t."title", t."coverUrl", t."duration", t."genre", an."bpm",
+     GROUP BY s."trackId", t."title", t."coverUrl", t."duration", g."name", an."bpm",
               a."id", a."name", a."imageUrl", a."isVerified"
      ${havingClause}
      ORDER BY streams DESC, listeners DESC

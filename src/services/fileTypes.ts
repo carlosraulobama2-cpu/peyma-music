@@ -23,6 +23,12 @@ const AUDIO_TYPES = new Set(['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp
 
 const AUDIO_BY_EXTENSION: Record<string, string> = {
   mp3: 'audio/mpeg',
+  // .mpeg y .mpga son MP3 con otro nombre. Pasa constantemente: una descarga
+  // que el navegador bautiza por el Content-Type acaba en "cancion.mp3.mpeg",
+  // y como Windows registra .mpeg como video/mpeg, el archivo desaparecía del
+  // diálogo y, si llegaba a elegirse, el servidor lo rechazaba.
+  mpeg: 'audio/mpeg',
+  mpga: 'audio/mpeg',
   wav: 'audio/wav',
   m4a: 'audio/mp4',
   ogg: 'audio/ogg',

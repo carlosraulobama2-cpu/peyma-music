@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken } from '../lib/httpClient';
+import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken, onUnauthorized } from '../lib/httpClient';
 import { AuthContext, AuthError, type AuthenticatedAdmin } from '../lib/authContext';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedAdmin | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  /**
+   * Sólo se "comprueba la sesión" si hay algo que comprobar.
+   *
+   * Leer `localStorage` es síncrono, así que se puede saber antes del primer
+   * render. Arrancando siempre en `true` había que apagarlo desde el efecto
+   * en el caso "no hay token", y eso es un set síncrono dentro del efecto:
+   * un render en cascada y una pantalla de "Cargando…" que aparecía y
+   * desaparecía sin que nadie estuviera cargando nada.
+   */
+  const [isLoading, setIsLoading] = useState(() => getAuthToken() !== null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token) {
-      // Leyendo localStorage (sistema externo) — no hay forma de evitar este
-      // set del lado de "no hay sesión guardada".
-      // oxlint-disable-next-line react/set-state-in-effect
-      setIsLoading(false);
-      return;
-    }
+    // Sin token no hay nada que comprobar: `isLoading` ya arrancó en false
+    // (ver su `useState`), así que no hay ningún estado que tocar aquí.
+    if (!getAuthToken()) return;
+
     http
       .get<{ user: AuthenticatedAdmin }>('/auth/me')
       .then(({ user }) => setUser(user))
@@ -24,6 +29,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setIsLoading(false));
   }, []);
+
+  /**
+   * Si el token caduca con el panel abierto, el cliente HTTP ya lo borró y
+   * avisa aquí. Sin esto quedaba una sesión imposible: el panel mostraba al
+   * administrador dentro y cada acción fallaba.
+   */
+  useEffect(() => onUnauthorized(() => setUser(null)), []);
 
   const login = useCallback(async (email: string, password: string) => {
     setIsSubmitting(true);

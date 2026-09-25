@@ -7,10 +7,7 @@
  * el mismo traductor sin quedar limitada al catálogo público.
  */
 import type { Prisma } from '@prisma/client';
-import { GENRE_VALUES } from '../schemas/validation';
 import type { QueryNode, FieldNode } from './queryParser';
-
-const GENRE_SET = new Set<string>(GENRE_VALUES);
 
 /** `love*` busca por prefijo; sin asterisco, por coincidencia parcial. */
 function textFilter(value: string): Prisma.StringFilter {
@@ -24,18 +21,16 @@ function fieldToWhere(node: FieldNode): Prisma.TrackWhereInput {
   switch (node.field) {
     case 'genre': {
       const lowered = node.value.toLowerCase();
-      // Dos vocabularios conviven: el enum cerrado de `Track.genre` y las
-      // etiquetas libres de `Artist.genres`. Si el valor pertenece al enum
-      // se filtra por ambos (un OR) para no perder resultados legítimos.
-      if (GENRE_SET.has(lowered)) {
-        return {
-          OR: [
-            { genre: lowered as Prisma.EnumGenreNullableFilter['equals'] },
-            { artist: { genres: { has: node.value } } },
-          ],
-        };
-      }
-      return { artist: { genres: { has: node.value } } };
+      // Ya no hay que contrastar contra una lista fija en código: `Track.genre`
+      // apunta a `MusicGenre`, así que filtrar por slug sencillamente no
+      // encuentra nada si ese género no existe en la tabla. Se sigue mirando
+      // también `Artist.genres`, que es texto libre y un vocabulario aparte.
+      return {
+        OR: [
+          { genre: { slug: lowered } },
+          { artist: { genres: { has: node.value } } },
+        ],
+      };
     }
 
     case 'year': {

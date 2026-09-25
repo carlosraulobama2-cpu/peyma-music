@@ -15,7 +15,17 @@ import {
 import { STATUS_LABEL, type TrackReviewStatus } from '../lib/moderation';
 
 /** Los pasos que realmente ejecuta el pipeline del backend, en orden. */
-const STEPS = ['Creando borrador', 'Subiendo audio', 'Subiendo portada', 'Analizando ritmo', 'Publicando'] as const;
+// Las mismas que ve un artista en la web y en la app: el último paso NO
+// publica, deja la canción en PENDING_REVIEW para que alguien la apruebe.
+// Llamarlo "Publicando" en el panel —justo donde se aprueban— describía mal
+// lo que hace el endpoint.
+const STEPS = [
+  'Creando borrador',
+  'Subiendo audio',
+  'Subiendo portada',
+  'Analizando la canción',
+  'Enviando a revisión',
+] as const;
 
 export function UploadPage() {
   const navigate = useNavigate();

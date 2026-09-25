@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { CoverImage } from "./CoverImage";
 import { LikeButton } from "./LikeButton";
+import { LyricsPanel } from "./LyricsPanel";
 
 const numberFormat = new Intl.NumberFormat("es");
 
@@ -66,6 +67,18 @@ export function NowPlayingPanel({ onClose }: NowPlayingPanelProps) {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section className="rounded-lg bg-surface-raised p-4">
+        <h4 className="text-xs font-bold uppercase tracking-wide text-muted">Letra</h4>
+        <div className="mt-3">
+          {/*
+            La clave fuerza a remontar al cambiar de canción. Sin ella, el
+            panel conservaría el scroll y la línea resaltada de la anterior
+            durante el instante que tarda en llegar la nueva letra.
+          */}
+          <LyricsPanel key={currentTrack.id} trackId={currentTrack.id} />
+        </div>
       </section>
 
       {upNext && (

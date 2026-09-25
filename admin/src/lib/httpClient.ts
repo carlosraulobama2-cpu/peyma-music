@@ -30,6 +30,27 @@ export const getAuthToken = (): string | null => localStorage.getItem(TOKEN_KEY)
 export const setAuthToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token);
 export const clearAuthToken = (): void => localStorage.removeItem(TOKEN_KEY);
 
+/**
+ * Aviso global de sesión caducada.
+ *
+ * El token dura 7 días y no se renueva. Hasta ahora sólo se miraba el 401 al
+ * restaurar la sesión al arrancar: si caducaba con el panel ya abierto, cada
+ * pantalla fallaba con un error genérico y la interfaz seguía mostrando al
+ * administrador dentro. Se borra el token y se avisa una vez.
+ */
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) listener();
+}
+
+
 interface ZodFlattenedError {
   fieldErrors?: Record<string, string[]>;
   formErrors?: string[];
@@ -92,6 +113,13 @@ async function request<T>(path: string, { method = 'GET', body, skipAuth }: Requ
   const data = isJson ? await response.json().catch(() => undefined) : undefined;
 
   if (!response.ok) {
+    // Un 401 con token es una sesión que ya no vale. `skipAuth` queda fuera:
+    // el login devuelve 401 con la contraseña mal, y eso no es caducidad.
+    if (response.status === 401 && !skipAuth && getAuthToken()) {
+      clearAuthToken();
+      notifyUnauthorized();
+    }
+
     throw new ApiError(extractErrorMessage(data, response.status), response.status, (data as { code?: string })?.code);
   }
   return data as T;
@@ -130,6 +158,12 @@ export async function uploadFile<T>(path: string, formData: FormData): Promise<T
   const data = isJson ? await response.json().catch(() => undefined) : undefined;
 
   if (!response.ok) {
+    // Un 401 aquí siempre es la sesión: esta función va siempre autenticada.
+    if (response.status === 401 && getAuthToken()) {
+      clearAuthToken();
+      notifyUnauthorized();
+    }
+
     throw new ApiError(extractErrorMessage(data, response.status), response.status, (data as { code?: string })?.code);
   }
   return data as T;

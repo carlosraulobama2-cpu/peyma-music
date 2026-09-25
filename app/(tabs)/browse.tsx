@@ -1,6 +1,6 @@
 import { Text, Pressable } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useAsyncData } from '../../src/hooks';
@@ -53,7 +53,13 @@ export default function BrowseScreen() {
         <Animated.View entering={FadeInUp.delay(index * motion.stagger).duration(motion.duration.normal)} style={styles.tileWrapper}>
           <Pressable
             onPress={() =>
-              tile.kind === 'chart' ? router.push(tile.route) : router.push(`/browse/${encodeURIComponent(tile.label)}`)
+              // El cast es necesario hasta que el servidor de desarrollo
+              // regenere `.expo/types/router.d.ts`: Expo Router tipa las
+              // rutas dinámicas a partir de los archivos existentes cuando
+              // arranca (ver el mismo comentario en EditorialSections.tsx).
+              tile.kind === 'chart'
+                ? router.push(tile.route as Href)
+                : router.push(`/browse/${encodeURIComponent(tile.label)}` as Href)
             }
             style={[styles.tile, { backgroundColor: tile.kind === 'chart' ? tile.color : TILE_COLORS[index % TILE_COLORS.length] }]}
             accessibilityRole="button"

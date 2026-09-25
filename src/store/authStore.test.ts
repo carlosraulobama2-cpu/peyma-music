@@ -30,8 +30,18 @@ jest.mock('../services/httpClient', () => {
     getAuthToken: jest.fn(),
     setAuthToken: jest.fn(async () => {}),
     clearAuthToken: jest.fn(async () => {}),
+    // El store se suscribe al arrancar para cerrar la sesión si el token
+    // caduca con la app abierta. Se guarda el callback para poder dispararlo
+    // en la prueba de más abajo.
+    onUnauthorized: jest.fn((listener: () => void) => {
+      escuchasNoAutorizado.push(listener);
+      return () => {};
+    }),
   };
 });
+
+/** Los callbacks que el store registró con `onUnauthorized`. */
+const escuchasNoAutorizado: (() => void)[] = [];
 
 // El store de biblioteca se toca al adoptar/soltar la sesión; aquí no
 // interesa y arrastra media app si se carga de verdad.
@@ -135,5 +145,97 @@ describe('authStore — arranque de la sesión', () => {
     expect(cliente.clearAuthToken).not.toHaveBeenCalled();
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
     expect(useAuthStore.getState().isLoading).toBe(false);
+  });
+});
+
+/**
+ * Quién es artista lo decide el servidor.
+ *
+ * El backend manda `role` en cada respuesta de sesión y el store lo
+ * descartaba: la pestaña de Estudio dependía de un `accountType` guardado
+ * en ESE teléfono, así que un artista que reinstalaba volvía como oyente.
+ */
+describe('authStore — el rol viene del servidor', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    escuchasNoAutorizado.length = 0;
+  });
+
+  it('un ARTIST del servidor es artista aunque el teléfono no supiera nada', async () => {
+    const { useAuthStore, cliente } = loadModule();
+    cliente.getAuthToken.mockResolvedValue('token-valido');
+    cliente.http.get.mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.c',
+        displayName: 'Ana',
+        avatarUrl: null,
+        favoriteGenres: [],
+        role: 'ARTIST',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    await useAuthStore.getState().loadStoredSession();
+
+    expect(useAuthStore.getState().user?.accountType).toBe('artist');
+  });
+
+  it('un USER del servidor es oyente', async () => {
+    const { useAuthStore, cliente } = loadModule();
+    cliente.getAuthToken.mockResolvedValue('token-valido');
+    cliente.http.get.mockResolvedValue({
+      user: {
+        id: 'u2',
+        email: 'c@d.e',
+        displayName: 'Luis',
+        avatarUrl: null,
+        favoriteGenres: [],
+        role: 'USER',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    await useAuthStore.getState().loadStoredSession();
+
+    expect(useAuthStore.getState().user?.accountType).toBe('listener');
+  });
+});
+
+/**
+ * El token dura 7 días y no se renueva: puede caducar con la app abierta.
+ * Antes sólo se miraba el 401 al arrancar, y mientras tanto la interfaz
+ * seguía mostrando la sesión iniciada mientras todo fallaba.
+ */
+describe('authStore — sesión caducada a mitad de uso', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    escuchasNoAutorizado.length = 0;
+  });
+
+  it('un 401 en cualquier petición cierra la sesión', async () => {
+    const { useAuthStore, cliente } = loadModule();
+    cliente.getAuthToken.mockResolvedValue('token-valido');
+    cliente.http.get.mockResolvedValue({
+      user: {
+        id: 'u3',
+        email: 'e@f.g',
+        displayName: 'Mar',
+        avatarUrl: null,
+        favoriteGenres: [],
+        role: 'USER',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    await useAuthStore.getState().loadStoredSession();
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+
+    // Lo que hace el cliente HTTP cuando el servidor responde 401.
+    for (const avisar of escuchasNoAutorizado) avisar();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(cliente.clearAuthToken).toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import { http } from "../../../lib/httpClient";
 import { uploadImageToBucket, describeRejection } from "../../../lib/avatarUpload";
 import { IMAGE_ACCEPT } from "../../../lib/fileTypes";
 import { CoverImage } from "../../../components/CoverImage";
+import { fetchGenreOptions } from "../../../lib/genres";
 
 /**
  * Convertirse en artista desde la web.
@@ -25,7 +26,7 @@ import { CoverImage } from "../../../components/CoverImage";
  * archive.org, con lo que el artista heredaba una foto que no eligió.
  */
 
-const GENRES = ["Electrónica", "Indie Pop", "Rock Alternativo", "Hip Hop", "Jazz", "Ambient", "Lo-Fi", "Clásica"];
+
 
 function elegido(files: FileList | null): File | null {
   return files && files.length > 0 ? files[0]! : null;
@@ -51,6 +52,13 @@ export default function BecomeArtistPage() {
   const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
+  /**
+   * Los géneros salen del catálogo real, como en el alta y como en la app.
+   * Se piden una vez al montar; si fallan, `fetchGenreOptions` ya devuelve
+   * una lista de reserva y el formulario sigue siendo usable.
+   */
+  const [opcionesGenero, setOpcionesGenero] = useState<string[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +98,21 @@ export default function BecomeArtistPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    // `genres` va como dependencia sólo en su primera forma: lo que importa
+    // es no perder de vista los que el artista ya tenía guardados.
+    fetchGenreOptions(genres)
+      .then((opciones) => {
+        if (!cancelled) setOpcionesGenero(opciones);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sólo al montar y cuando llega el perfil
+  }, [profile]);
 
   const toggleGenre = (genre: string) =>
     setGenres((current) => (current.includes(genre) ? current.filter((g) => g !== genre) : [...current, genre]));
@@ -223,7 +246,7 @@ export default function BecomeArtistPage() {
         <fieldset>
           <legend className="mb-2 text-sm font-semibold">Tus géneros</legend>
           <div className="flex flex-wrap gap-2">
-            {GENRES.map((genre) => (
+            {opcionesGenero.map((genre) => (
               <button
                 key={genre}
                 type="button"

@@ -4,7 +4,9 @@
  *   npm run storage:cors
  *
  * Aplica al bucket la misma lista de orígenes que usa la API (`CORS_ORIGINS`),
- * para que el navegador pueda leer el audio directamente desde el CDN.
+ * para que el navegador pueda leer el audio directamente desde el CDN y
+ * subir al bucket las imágenes que van por URL firmada (foto de perfil y
+ * foto de artista).
  *
  * Por qué hace falta: la web reproduce con un `<audio crossOrigin="anonymous">`
  * conectado a un grafo de Web Audio (`createMediaElementSource`). Cuando el
@@ -58,12 +60,56 @@ async function main(): Promise<void> {
       CORSConfiguration: {
         CORSRules: [
           {
-            AllowedOrigins: origins,
-            // Sólo lectura: al bucket se ESCRIBE con URL firmada desde el
-            // cliente, y esas llevan su propia autorización en la firma. Un
-            // PUT abierto por CORS permitiría a cualquier web autorizada
-            // subir objetos.
+            /**
+             * LECTURA abierta a cualquier origen, a propósito.
+             *
+             * Con la lista literal de `CORS_ORIGINS` el audio subido al
+             * bucket no sonaba, y costó ver por qué: la web reproduce con
+             * `<audio crossOrigin="anonymous">` apuntando a nuestro proxy
+             * `/api/tracks/:id/stream`, que responde un 302 al CDN. En una
+             * redirección CORS que cambia de origen el navegador reenvía la
+             * petición con `Origin: null`, y `null` no está —ni puede
+             * estar— en la lista de dominios. R2 respondía sin cabecera CORS
+             * y el navegador silenciaba la salida. Las canciones importadas
+             * de archive.org sí sonaban porque ese dominio responde `*`.
+             *
+             * Abrirlo no expone nada: estos objetos ya son públicos por el
+             * dominio `pub-*.r2.dev` y cualquiera puede descargarlos con
+             * curl sin pasar por CORS. CORS no autoriza el acceso, sólo
+             * decide si el navegador se atreve a leer la respuesta.
+             *
+             * Además evita tener que acordarse de volver a correr este
+             * script cada vez que cambia un dominio del front.
+             */
+            AllowedOrigins: ['*'],
             AllowedMethods: ['GET', 'HEAD'],
+            AllowedHeaders: ['Range', 'Content-Type'],
+            ExposeHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Type', 'ETag'],
+            MaxAgeSeconds: 3600,
+          },
+          {
+            /** ESCRITURA: sólo desde nuestros propios front-ends. */
+            AllowedOrigins: origins,
+            /**
+             * `PUT` incluido, y no es un agujero.
+             *
+             * Aquí hubo un malentendido que dejó rota la subida de fotos
+             * durante meses: se dejó la política en sólo lectura razonando
+             * que, como al bucket se escribe con URL firmada, "un PUT
+             * abierto por CORS permitiría a cualquier web autorizada subir
+             * objetos". Las dos mitades de esa frase son ciertas por
+             * separado y la conclusión no.
+             *
+             * Quien impide subir sin permiso es la FIRMA, que R2 valida en
+             * cada petición: sin ella responde 403 venga de donde venga.
+             * CORS no autoriza nada, sólo decide si el navegador se atreve
+             * a mandar la petición. Sin `PUT` en esta lista, el preflight
+             * del navegador se lleva un 403 y la subida no llega a salir:
+             * la foto de perfil y el alta de artista desde la web morían
+             * ahí, en silencio, mientras la app del teléfono —que no pasa
+             * por CORS— funcionaba.
+             */
+            AllowedMethods: ['PUT'],
             AllowedHeaders: ['Range', 'Content-Type'],
             // Sin exponer estas, `fetch` no puede leerlas aunque lleguen, y
             // el reproductor pierde la duración y la capacidad de buscar
@@ -78,8 +124,9 @@ async function main(): Promise<void> {
   console.log('  ✓ política aplicada');
 
   const current = await client.send(new GetBucketCorsCommand({ Bucket: bucket }));
-  const rule = current.CORSRules?.[0];
-  console.log(`  ✓ confirmada por el bucket: ${rule?.AllowedOrigins?.join(', ')} [${rule?.AllowedMethods?.join(', ')}]`);
+  for (const rule of current.CORSRules ?? []) {
+    console.log(`  ✓ confirmada por el bucket: ${rule.AllowedOrigins?.join(', ')} [${rule.AllowedMethods?.join(', ')}]`);
+  }
   console.log('\nListo. Compruébalo con `npm run storage:check`.\n');
 }
 

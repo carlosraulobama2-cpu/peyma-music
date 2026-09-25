@@ -85,6 +85,14 @@ export interface UploadParams {
   albumId?: string;
   /** Créditos a nombre suelto — compositor, productor, etc. Ninguno es obligatorio. */
   credits?: CreditDraft[];
+  /**
+   * Letra en texto plano, opcional. Viaja en el paso de metadatos, que hasta
+   * ahora el pipeline de la web se saltaba entero.
+   */
+  lyrics?: string | null;
+  /** Id de un `MusicGenre`. Opcional: mejor sin género que con uno inventado. */
+  genreId?: string | null;
+  token: string | null;
   onStep?: (step: UploadStep) => void;
 }
 
@@ -101,6 +109,9 @@ export async function uploadTrack({
   cover,
   albumId,
   credits,
+  lyrics,
+  genreId,
+  token,
   onStep,
 }: UploadParams): Promise<PublishedTrack> {
   onStep?.(0);
@@ -124,6 +135,20 @@ export async function uploadTrack({
 
   onStep?.(3);
   await http.post(`/uploads/${upload.id}/analyze`);
+
+  // Metadatos antes de publicar: es `publish` quien vuelca
+  // `lyricsPlainDraft` en la tabla `Lyrics`, así que mandarla después no
+  // serviría de nada. Comparte paso con el análisis a propósito en vez de
+  // tener uno propio: es una llamada corta y casi siempre instantánea, y un
+  // sexto punto en la barra de progreso sólo haría el proceso más lento a
+  // la vista sin informar de nada.
+  const letra = lyrics?.trim();
+  if (letra || genreId) {
+    await http.patch(`/uploads/${upload.id}`, {
+      ...(letra ? { lyricsPlainDraft: letra } : {}),
+      ...(genreId ? { genreOverrideId: genreId } : {}),
+    });
+  }
 
   onStep?.(4);
   const { track } = await http.post<{ track: PublishedTrack }>(`/uploads/${upload.id}/publish`, { confirm: true });

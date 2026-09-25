@@ -12,7 +12,9 @@
  *     caducada tiene que poder entrar para llegar al panel. El REGISTRO no
  *     entra en la excepción: dejar que alguien cree una cuenta durante el
  *     mantenimiento sólo sirve para que se choque contra el 503 en la
- *     siguiente pantalla.
+ *     siguiente pantalla. `/api/auth/me` entra con ellas: es como el panel
+ *     restaura una sesión ya iniciada, y sin ella un admin con la sesión
+ *     perfectamente válida aterrizaba en el login en mitad del mantenimiento.
  *  3. `/health` y `/ready` — el balanceador dejaría de enrutar tráfico y
  *     el despliegue se daría por caído, que no es lo que significa "en
  *     mantenimiento".
@@ -31,7 +33,7 @@ const ALWAYS_OPEN = [
   /^\/health$/,
   /^\/ready$/,
   /^\/api\/admin(\/|$)/,
-  /^\/api\/auth\/(login|google)$/,
+  /^\/api\/auth\/(login|google|me)$/,
   // El anuncio no es mantenimiento: si el cliente lo pidiera y chocara con
   // el 503, la pantalla de mantenimiento tapa igual el banner, pero el
   // aviso quedaría marcado como "no se pudo cargar" en la consola sin razón.

@@ -39,8 +39,23 @@ export interface AudioAnalysisResult {
   instrumentalness: number;
   loudnessDb: number;
   featureVector: number[];
-  suggestedGenre: AnalysisGenre;
-  suggestedMood: AnalysisMood;
+  /**
+   * Siempre `null`: aqui no hay clasificador.
+   *
+   * Hasta ahora se devolvia `pick(rand, GENRES)`, es decir, uno de los ocho
+   * generos AL AZAR, y `publish` lo copiaba al Track. El resultado es que
+   * cada cancion salia publicada con un genero sacado de una moneda al aire
+   * — un tema de trap podia quedar etiquetado como "lofi" — y nadie podia
+   * saber que esa etiqueta no significaba nada.
+   *
+   * El resto de valores inventados de este archivo alimentan ranking y
+   * recomendaciones, donde un numero plausible degrada la calidad sin
+   * mentirle a nadie a la cara. El genero no: es una etiqueta que el oyente
+   * lee como un hecho sobre la cancion. Mejor vacio que inventado, y que lo
+   * elija quien la sube.
+   */
+  suggestedGenre: AnalysisGenre | null;
+  suggestedMood: AnalysisMood | null;
   analyzerVersion: string;
 }
 
@@ -63,10 +78,6 @@ function seededRandom(seed: string): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-function pick<T>(rand: () => number, items: readonly T[]): T {
-  return items[Math.floor(rand() * items.length)] as T;
 }
 
 /**
@@ -114,8 +125,8 @@ class HeuristicAudioAnalyzer implements AudioAnalyzer {
       instrumentalness,
       loudnessDb,
       featureVector,
-      suggestedGenre: pick(rand, GENRES),
-      suggestedMood: pick(rand, MOODS),
+      suggestedGenre: null,
+      suggestedMood: null,
       analyzerVersion: ANALYZER_VERSION,
     };
   }
