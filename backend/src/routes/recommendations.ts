@@ -13,7 +13,7 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth';
 import { generatePlaylistSchema, idParamSchema, querySchema } from '../schemas/validation';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { findSimilarTracks, recommendForUser, generateAutoPlaylist } from '../services/recommendation';
-import { getTrendingTracks } from '../services/trending';
+import { getTrendingTracks, getTopAlbums } from '../services/trending';
 
 const router = Router();
 
@@ -25,6 +25,14 @@ router.get('/trending', async (req: AuthRequest, res: Response) => {
   res.json({
     tracks: entries.map((e) => ({ ...e.track, rank: e.rank, previousRank: e.previousRank, streams: e.streams })),
   });
+});
+
+/** "Top 100 álbumes" — reproducciones reales de los últimos 28 días, sin sencillos. */
+router.get('/top-albums', async (req: AuthRequest, res: Response) => {
+  const { limit } = querySchema.parse(req.query);
+
+  const entries = await getTopAlbums(limit);
+  res.json({ albums: entries.map((e) => ({ ...e.album, rank: e.rank, streams: e.streams })) });
 });
 
 /** "Porque escuchaste X" — pistas parecidas por ritmo/energía a una pista dada. */

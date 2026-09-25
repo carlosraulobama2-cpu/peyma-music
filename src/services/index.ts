@@ -1,4 +1,4 @@
-export type { EditorialSection, HomeFeed } from './api';
+export type { EditorialSection, HomeFeed, RankedAlbum } from './api';
 export { api, isAbortError, type ApiOptions, type PagedResult } from './api';
 export { setupTrackPlayer, playbackService } from './trackPlayerService';
 export { setLocationConsent, getCoarseCoords } from './locationConsent';

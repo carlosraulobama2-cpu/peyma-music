@@ -11,6 +11,16 @@ import { useThemedStyles, spacing, typography, radius, layout, motion, type Them
 /** Colores fijos para las tarjetas de género — dan variedad visual sin depender de imágenes. */
 const TILE_COLORS = ['#E13300', '#7358FF', '#1E3264', '#148A08', '#E8115B', '#BC5900', '#503750', '#477D95'];
 
+type BrowseTile =
+  | { kind: 'chart'; key: string; label: string; sublabel: string; color: string; route: string }
+  | { kind: 'genre'; key: string; label: string };
+
+/** Rankings globales fijos, antes de los géneros — no dependen de si hay catálogo por género. */
+const CHART_TILES: BrowseTile[] = [
+  { kind: 'chart', key: 'top-tracks', label: 'Top 100 canciones', sublabel: 'Ranking global', color: '#B45309', route: '/charts' },
+  { kind: 'chart', key: 'top-albums', label: 'Top 100 álbumes', sublabel: 'Ranking global', color: '#7C3AED', route: '/charts/albums' },
+];
+
 export default function BrowseScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -18,10 +28,15 @@ export default function BrowseScreen() {
 
   const { data: genres, isLoading } = useAsyncData((signal) => api.getGenres({ signal }), []);
 
+  const tiles: BrowseTile[] = [
+    ...CHART_TILES,
+    ...(genres ?? []).map((genre): BrowseTile => ({ kind: 'genre', key: genre, label: genre })),
+  ];
+
   return (
     <FlashList
-      data={genres ?? []}
-      keyExtractor={(genre) => genre}
+      data={tiles}
+      keyExtractor={(tile) => tile.key}
       numColumns={2}
       contentContainerStyle={[styles.listContent, { paddingTop: insets.top + spacing.xl }]}
       ListHeaderComponent={<Text style={styles.title}>Explorar</Text>}
@@ -34,15 +49,18 @@ export default function BrowseScreen() {
           </>
         ) : null
       }
-      renderItem={({ item: genre, index }) => (
+      renderItem={({ item: tile, index }) => (
         <Animated.View entering={FadeInUp.delay(index * motion.stagger).duration(motion.duration.normal)} style={styles.tileWrapper}>
           <Pressable
-            onPress={() => router.push(`/browse/${encodeURIComponent(genre)}`)}
-            style={[styles.tile, { backgroundColor: TILE_COLORS[index % TILE_COLORS.length] }]}
+            onPress={() =>
+              tile.kind === 'chart' ? router.push(tile.route) : router.push(`/browse/${encodeURIComponent(tile.label)}`)
+            }
+            style={[styles.tile, { backgroundColor: tile.kind === 'chart' ? tile.color : TILE_COLORS[index % TILE_COLORS.length] }]}
             accessibilityRole="button"
-            accessibilityLabel={genre}
+            accessibilityLabel={tile.kind === 'chart' ? `${tile.label}, ${tile.sublabel}` : tile.label}
           >
-            <Text style={styles.tileText}>{genre}</Text>
+            <Text style={styles.tileText}>{tile.label}</Text>
+            {tile.kind === 'chart' && <Text style={styles.tileSubtext}>{tile.sublabel}</Text>}
           </Pressable>
         </Animated.View>
       )}
@@ -77,6 +95,12 @@ const makeStyles = ({ colors }: Theme) => ({
     color: '#FFFFFF',
     fontFamily: typography.family.bold,
     fontSize: typography.size.lg,
+  },
+  tileSubtext: {
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.xs,
+    marginTop: 2,
   },
   skeletonTile: {
     marginBottom: spacing.sm,

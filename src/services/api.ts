@@ -42,6 +42,11 @@ export interface PagedResult<T> {
   hasMore: boolean;
 }
 
+export interface RankedAlbum extends Album {
+  rank: number;
+  streams: number;
+}
+
 export interface ApiOptions {
   signal?: AbortSignal;
 }
@@ -103,6 +108,18 @@ export const api = {
     return items.map((t) => mapTrack(t));
   },
 
+  /**
+   * TODAS las canciones del artista de quien pregunta, en cualquier estado
+   * de moderación — a diferencia de `getArtistTracks`/`getTracks`, que sólo
+   * devuelven lo ya `APPROVED`. Es lo que alimenta "Tus lanzamientos" en el
+   * panel de artista: sin esto, una canción recién publicada era invisible
+   * (y no reproducible) hasta que un admin la aprobara.
+   */
+  async getMyTracks({ signal }: ApiOptions = {}): Promise<Track[]> {
+    const { tracks } = await http.get<{ tracks: BackendTrack[] }>('/artists/me/tracks', { signal });
+    return tracks.map((t) => mapTrack(t));
+  },
+
   // Álbumes
   async getAlbums({ signal }: ApiOptions = {}): Promise<Album[]> {
     const { items } = await paginatedGet<BackendAlbum>('/albums', 'albums', { limit: 50 }, { signal });
@@ -117,6 +134,15 @@ export const api = {
       if (isAbortError(error)) throw error;
       return undefined;
     }
+  },
+
+  /** "Top 100 álbumes" — reproducciones reales de los últimos 28 días, sin sencillos. */
+  async getTopAlbums(limit = 100, { signal }: ApiOptions = {}): Promise<RankedAlbum[]> {
+    const { albums } = await http.get<{ albums: (BackendAlbum & { rank: number; streams: number })[] }>(
+      `/recommendations/top-albums?limit=${limit}`,
+      { signal },
+    );
+    return albums.map((a) => ({ ...mapAlbum(a), rank: a.rank, streams: a.streams }));
   },
 
   // Playlists (públicas + propias del usuario logueado, según decide el backend)
@@ -235,8 +261,8 @@ export const api = {
    * todavía), así que `locationLabel`/`usingGlobalFallback` siempre
    * reflejan eso — nada de simular un top "por país" que no existe.
    */
-  async getTrending({ signal }: ApiOptions = {}): Promise<TrendingChart> {
-    const { tracks } = await http.get<{ tracks: BackendTrendingTrack[] }>('/recommendations/trending?limit=20', { signal });
+  async getTrending(limit = 100, { signal }: ApiOptions = {}): Promise<TrendingChart> {
+    const { tracks } = await http.get<{ tracks: BackendTrendingTrack[] }>(`/recommendations/trending?limit=${limit}`, { signal });
     return { locationLabel: 'Global', topTracks: tracks.map(mapTrendingTrack) };
   },
 
