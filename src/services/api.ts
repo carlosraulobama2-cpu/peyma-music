@@ -292,6 +292,20 @@ export const api = {
     return artist ? mapArtist(artist) : null;
   },
 
+  /**
+   * Edita el perfil del propio artista, de verdad — a diferencia de
+   * `useArtistStore.updateProfile()` (un `set()` puramente local que nunca
+   * llegaba al servidor). Devuelve el perfil que quedó guardado, para que
+   * el store se sincronice con la versión real.
+   */
+  async updateMyArtistProfile(
+    patch: { name?: string; imageUrl?: string; bio?: string | null; genres?: string[] },
+    { signal }: ApiOptions = {},
+  ): Promise<Artist> {
+    const { artist } = await http.patch<{ artist: BackendArtist }>('/artists/me', patch, { signal });
+    return mapArtist(artist);
+  },
+
   /** Una sección concreta por slug — el destino de /seccion/:slug. */
   async getEditorialSectionBySlug(slug: string, { signal }: ApiOptions = {}): Promise<EditorialSection | null> {
     try {

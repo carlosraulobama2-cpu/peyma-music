@@ -35,7 +35,8 @@ interface ArtistStudioStore {
    * subida hecha con ese id habría sido rechazada por el backend.
    */
   becomeArtist: (input: { id: string; name: string; bio?: string; imageUrl?: string; genres: string[] }) => void;
-  updateProfile: (patch: Partial<Pick<Artist, 'name' | 'bio' | 'imageUrl' | 'genres'>>) => void;
+  /** Guarda el cambio en el servidor y recién entonces actualiza el perfil local — ver comentario en la implementación. */
+  updateProfile: (patch: Partial<Pick<Artist, 'name' | 'bio' | 'imageUrl' | 'genres'>>) => Promise<void>;
   stopBeingArtist: () => void;
 
   publishTrack: (track: Omit<Track, 'artist' | 'artistId' | 'isLiked'>) => void;
@@ -69,8 +70,19 @@ export const useArtistStore = create<ArtistStudioStore>()(
         void get().refreshStats();
       },
 
-      updateProfile: (patch) =>
-        set((state) => (state.profile ? { profile: { ...state.profile, ...patch } } : state)),
+      /**
+       * Antes esto era un `set()` puramente local: parecía guardar el
+       * nombre/bio en la pantalla de edición, pero el servidor nunca se
+       * enteraba. Otro dispositivo de la misma cuenta, el perfil público
+       * que ve todo el mundo, y el panel admin seguían mostrando lo viejo
+       * para siempre. Ahora el servidor manda: si la llamada falla, el
+       * perfil local NO cambia, así la pantalla puede avisar del error en
+       * vez de mostrar un cambio que en realidad no se guardó.
+       */
+      updateProfile: async (patch) => {
+        const updated = await api.updateMyArtistProfile(patch);
+        set({ profile: updated });
+      },
 
       stopBeingArtist: () => set({ profile: null, releases: [], stats: null, isLoadingStats: false }),
 
