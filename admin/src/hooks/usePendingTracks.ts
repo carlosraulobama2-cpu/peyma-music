@@ -6,21 +6,38 @@ export function usePendingTracks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Trae la cola. No toca el estado de forma SÍNCRONA: todo lo que escribe
+   * va dentro de los callbacks de la promesa.
+   *
+   * Esa separación es la que permite llamarla desde el efecto de montaje sin
+   * provocar un render en cascada. Antes el efecto llamaba a `refresh`, que
+   * empieza poniendo `loading: true`, y eso es un set síncrono dentro del
+   * efecto — además de redundante, porque el estado ya nace en "cargando".
+   */
+  const cargar = useCallback(
+    () =>
+      fetchPendingTracks()
+        .then((res) => setTracks(res.tracks))
+        .catch((err) => setError(err instanceof Error ? err.message : 'No se pudo cargar la cola de moderación.'))
+        .finally(() => setLoading(false)),
+    [],
+  );
+
+  /**
+   * Recarga a petición (el botón de refrescar, o tras moderar una pista).
+   * Aquí sí se vuelve a "cargando", que es lo que el usuario espera ver
+   * cuando pulsa él.
+   */
   const refresh = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchPendingTracks()
-      .then((res) => setTracks(res.tracks))
-      .catch((err) => setError(err instanceof Error ? err.message : 'No se pudo cargar la cola de moderación.'))
-      .finally(() => setLoading(false));
-  }, []);
+    void cargar();
+  }, [cargar]);
 
   useEffect(() => {
-    // Carga inicial desde la API (sistema externo) — `refresh` hace sets
-    // síncronos al arrancar, es justamente lo que tiene que pasar acá.
-    // oxlint-disable-next-line react/set-state-in-effect
-    refresh();
-  }, [refresh]);
+    void cargar();
+  }, [cargar]);
 
   const removeTrack = useCallback((trackId: string) => {
     setTracks((prev) => prev.filter((t) => t.id !== trackId));

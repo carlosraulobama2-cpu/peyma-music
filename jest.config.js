@@ -18,6 +18,10 @@ module.exports = {
   // `.kilo/worktrees` son copias completas del repositorio que crea otra
   // herramienta: sin excluirlas, Jest encuentra y ejecuta cada test dos
   // veces. `dist` lo genera `expo export`.
-  testPathIgnorePatterns: ['/node_modules/', '/backend/', '/\\.kilo/', '/dist/'],
+  // `web/` y `admin/` tienen sus propias pruebas, con vitest y corriéndose
+  // desde ahí (`npm --prefix web test`). Jest las encontraba y las ejecutaba
+  // con el preset de React Native, donde ni siquiera existe el `import` de
+  // vitest: tres suites en rojo sin nada roto detrás.
+  testPathIgnorePatterns: ['/node_modules/', '/backend/', '/web/', '/admin/', '/\\.kilo/', '/dist/'],
   modulePathIgnorePatterns: ['/\\.kilo/', '/dist/'],
 };

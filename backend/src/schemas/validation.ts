@@ -1,9 +1,28 @@
 import { z } from 'zod';
 
-// Mismo universo cerrado que el enum `Genre` de Prisma y que
-// `src/types/index.ts` del lado de la app — un solo lugar por stack.
-export const GENRE_VALUES = ['lofi', 'jazz', 'ambient', 'pop', 'hiphop', 'classical', 'electronic', 'rock'] as const;
-export const genreEnum = z.enum(GENRE_VALUES);
+// El género ya no es un universo cerrado en código: vive en la tabla
+// `MusicGenre`, que se edita desde Ritmos en el panel. Aquí sólo se valida
+// la FORMA (un slug, o un id), y que el género exista de verdad lo resuelve
+// la clave foránea de Postgres en el momento de escribir.
+//
+// Antes había aquí una lista fija de ocho que tenía que coincidir a mano con
+// el enum de Prisma y con `src/types/index.ts` de la app. Esa lista es la que
+// dejaba fuera a trap, rap y drill.
+export const genreSlug = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9-]+$/, 'Slug de género inválido');
+export const genreId = z.string().cuid();
+
+/** Cambiar el ritmo de una canción ya publicada, desde el panel. */
+export const setTrackGenreSchema = z.object({
+  // `null` es un valor legítimo y no un campo ausente: quitarle el ritmo a
+  // una canción mal etiquetada tiene que poderse hacer.
+  genreId: genreId.nullable(),
+});
 
 // Moods como lista curada (no enum de DB — ver comentario en schema.prisma).
 export const MOOD_VALUES = ['Relajado', 'Enérgico', 'Melancólico', 'Alegre', 'Intenso', 'Soñador'] as const;
@@ -67,7 +86,7 @@ export const createTrackSchema = z.object({
   duration: z.number().int().positive().max(3600 * 6), // hasta 6 horas
   coverUrl: z.string().url(),
   audioUrl: z.string().url(),
-  genre: genreEnum.optional(),
+  genreId: genreId.optional(),
   mood: moodEnum.optional(),
 });
 
@@ -79,7 +98,7 @@ export const updateTrackSchema = z
     duration: z.number().int().positive().max(3600 * 6).optional(),
     coverUrl: z.string().url().optional(),
     audioUrl: z.string().url().optional(),
-    genre: genreEnum.optional(),
+    genreId: genreId.nullable().optional(),
     mood: moodEnum.optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'Nada para actualizar' });
@@ -129,8 +148,8 @@ export const querySchema = z.object({
   search: z.string().trim().max(200).optional(),
   /** Etiqueta libre del artista (`Artist.genres`) — no confundir con `primaryGenre`, el universo cerrado de `Track.genre`. */
   genre: z.string().trim().max(100).optional(),
-  /** Universo cerrado de `Track.genre` — para los carruseles de género de Inicio (ver `GenreCarousel`/`isValidGenreForSection` en el frontend). */
-  primaryGenre: genreEnum.optional(),
+  /** Slug de `MusicGenre` — para los carruseles de género de Inicio. */
+  primaryGenre: genreSlug.optional(),
   /** Ánimo curado (`Track.mood`) — alimenta las tarjetas de ánimo de Buscar. */
   mood: z.string().trim().max(50).optional(),
   artistId: z.string().cuid().optional(),
@@ -159,7 +178,7 @@ export const updateUploadMetadataSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
     albumId: z.string().cuid().nullable().optional(),
-    genreOverride: genreEnum.nullable().optional(),
+    genreOverrideId: genreId.nullable().optional(),
     moodOverride: moodEnum.nullable().optional(),
     lyricsPlainDraft: z.string().trim().max(20_000).nullable().optional(),
     // LRC-like: [{ timeMs, text }, …], ordenado y con timeMs no negativo.
@@ -181,7 +200,7 @@ export const publishUploadSchema = z.object({
 export const generatePlaylistSchema = z.object({
   type: z.enum(['RHYTHM_MATCH', 'DAILY_MIX', 'GENRE_MIX']),
   seedTrackId: z.string().cuid().optional(),
-  genre: genreEnum.optional(),
+  genre: genreSlug.optional(),
 });
 
 // --- Reproducciones (ver services/streamLog.ts, routes/streams.ts) ---

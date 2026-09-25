@@ -74,10 +74,11 @@ export default function LoginScreen() {
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
   const handleLogin = async () => {
-    if (password.length < 6) {
-      toast.error('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
+    // Sin mínimo de longitud: aquí la cuenta YA existe y el backend acepta
+    // cualquier contraseña no vacía al entrar. El 6 que había aquí no era
+    // el mínimo de nada — el del registro son 8 — y dejaba fuera a quien
+    // tuviera una contraseña más corta de antes. `login` del store ya
+    // rechaza la cadena vacía.
     try {
       await login(email.trim(), password);
       setStepIndex(2); // paso de confirmación, antes de entrar a la app

@@ -18,7 +18,7 @@
  */
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, type Genre } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL }),
@@ -34,7 +34,8 @@ const DRY_RUN = process.argv.includes('--dry');
  * contenido es música (el archivo mezcla música con grabaciones de campo,
  * charlas y ruido ambiente).
  */
-const ALBUMS: { identifier: string; genre: Genre; mood: string }[] = [
+// `genre` es el slug de un `MusicGenre` (tabla editable desde el panel).
+const ALBUMS: { identifier: string; genre: string; mood: string }[] = [
   { identifier: 'LeeRosevere_MusicForPodcasts3', genre: 'ambient', mood: 'Relajado' },
   { identifier: 'Escape_From_Lhasa', genre: 'electronic', mood: 'Soñador' },
   { identifier: 'AstralnauticsForBeginners', genre: 'electronic', mood: 'Intenso' },
@@ -270,13 +271,24 @@ async function main(): Promise<void> {
       const existing = await prisma.track.findFirst({ where: { artistId: artist.id, title } });
       if (existing) continue;
 
+      // El ritmo tiene que existir ya en `MusicGenre` (se curan desde Ritmos
+      // en el panel). Se resuelve el id y se falla ruidosamente si no está,
+      // que es mejor que importar un catálogo entero sin género.
+      const genero = await prisma.musicGenre.findUnique({
+        where: { slug: entry.genre },
+        select: { id: true },
+      });
+      if (!genero) {
+        throw new Error(`El género "${entry.genre}" no existe en MusicGenre. Créalo en el panel antes de importar.`);
+      }
+
       await prisma.track.create({
         data: {
           title,
           duration,
           coverUrl,
           audioUrl,
-          genre: entry.genre,
+          genreId: genero.id,
           mood: entry.mood,
           artistId: artist.id,
           albumId: album.id,

@@ -17,17 +17,6 @@ datasource db {
 // Mismo universo cerrado de géneros que `src/types/index.ts` en la app — a
 // propósito los mismos 8 valores en minúscula, para no tener dos
 // vocabularios de género que puedan divergir entre frontend y backend.
-enum Genre {
-  lofi
-  jazz
-  ambient
-  pop
-  hiphop
-  classical
-  electronic
-  rock
-}
-
 enum MusicalMode {
   major
   minor
@@ -188,22 +177,22 @@ enum JobKind {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  displayName    String
+  id                   String          @id @default(cuid())
+  email                String          @unique
+  displayName          String
   /// Nulo para cuentas que sólo iniciaron sesión con Google — nunca tuvieron contraseña propia.
-  passwordHash   String?
+  passwordHash         String?
   /// `sub` del perfil de Google — único, nulo hasta que la cuenta se vincula (ver services/googleAuth.ts).
-  googleId       String?  @unique
-  avatarUrl      String?
-  favoriteGenres String[]
+  googleId             String?         @unique
+  avatarUrl            String?
+  favoriteGenres       String[]
   /// `ADMIN` habilita `/api/admin/moderation/*` — ver requireRole() en middleware/auth.ts.
-  role           Role     @default(USER)
+  role                 Role            @default(USER)
   /// Ver el enum. Sin GRANTED, la API descarta cualquier coordenada que
   /// llegue: el consentimiento se comprueba en el servidor, no se confía en
   /// que el cliente deje de mandarla.
-  locationConsent LocationConsent @default(NOT_ASKED)
-  locationConsentAt DateTime?
+  locationConsent      LocationConsent @default(NOT_ASKED)
+  locationConsentAt    DateTime?
   /// Cuándo aceptó los términos y la política de privacidad, y QUÉ versión.
   ///
   /// La versión y no un booleano: los textos cambian, y "aceptó" sin decir
@@ -214,29 +203,29 @@ model User {
   /// se rellenan con una fecha inventada, porque un consentimiento que nadie
   /// dio es peor que ninguno.
   acceptedTermsVersion String?
-  acceptedTermsAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  acceptedTermsAt      DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
-  playlists      Playlist[]
-  favorites      Favorite[]
-  recentlyPlayed RecentlyPlayed[]
-  following      Follow[]         @relation("UserFollowsArtists")
-  uploadedTracks Track[]          @relation("TrackUploadedBy")
-  verifiedArtists Artist[]        @relation("ArtistVerifiedBy")
-  auditLogs      AuditLog[]       @relation("AuditActor")
-  searches       SearchLog[]      @relation("UserSearches")
-  trackReports   TrackReport[]    @relation("TrackReporter")
-  notifications  Notification[]   @relation("UserNotifications")
-  promotionRequests Promotion[]   @relation("PromotionRequester")
-  reviewedPromotions Promotion[]  @relation("PromotionReviewer")
-  resolvedReports TrackReport[]   @relation("ReportResolver")
-  updatedSettings AppSetting[]    @relation("SettingUpdatedBy")
-  uploads        TrackUpload[]
-  ownedArtists   Artist[]         @relation("ArtistOwner")
-  streamLogs     StreamLog[]
+  playlists          Playlist[]
+  favorites          Favorite[]
+  recentlyPlayed     RecentlyPlayed[]
+  following          Follow[]         @relation("UserFollowsArtists")
+  uploadedTracks     Track[]          @relation("TrackUploadedBy")
+  verifiedArtists    Artist[]         @relation("ArtistVerifiedBy")
+  auditLogs          AuditLog[]       @relation("AuditActor")
+  searches           SearchLog[]      @relation("UserSearches")
+  trackReports       TrackReport[]    @relation("TrackReporter")
+  notifications      Notification[]   @relation("UserNotifications")
+  promotionRequests  Promotion[]      @relation("PromotionRequester")
+  reviewedPromotions Promotion[]      @relation("PromotionReviewer")
+  resolvedReports    TrackReport[]    @relation("ReportResolver")
+  updatedSettings    AppSetting[]     @relation("SettingUpdatedBy")
+  uploads            TrackUpload[]
+  ownedArtists       Artist[]         @relation("ArtistOwner")
+  streamLogs         StreamLog[]
   /// Tracks que este admin aprobó/rechazó (ver Track.reviewedBy).
-  reviewedTracks Track[]          @relation("TrackReviewedBy")
+  reviewedTracks     Track[]          @relation("TrackReviewedBy")
 
   @@index([email])
   @@index([role])
@@ -255,7 +244,7 @@ model Artist {
   /// Bloqueo administrativo: oculta al artista y TODAS sus pistas del
   /// catálogo público sin borrar nada, para poder revertirlo. Distinto de
   /// eliminar, que sí destruye el contenido en cascada.
-  isBlocked Boolean  @default(false)
+  isBlocked Boolean @default(false)
 
   /// Check de verificación. Se otorga desde el panel y se muestra junto al
   /// nombre en la app y la web. Se guarda quién lo dio y cuándo: es una
@@ -269,24 +258,24 @@ model Artist {
   /// Qué usuario administra este perfil — nulo en catálogo/seed. Se "reclama"
   /// solo con la primera subida que se le hace (ver routes/uploads.ts); a
   /// partir de ahí sólo ese usuario puede publicar pistas para este artista.
-  ownerId   String?
-  owner     User?         @relation("ArtistOwner", fields: [ownerId], references: [id])
+  ownerId String?
+  owner   User?   @relation("ArtistOwner", fields: [ownerId], references: [id])
 
-  albums    Album[]
-  tracks    Track[]
+  albums         Album[]
+  tracks         Track[]
   /// Seguidores — relación persistente, no vence (ver Follow más abajo).
-  followers Follow[]      @relation("ArtistFollowers")
-  uploads   TrackUpload[]
+  followers      Follow[]        @relation("ArtistFollowers")
+  uploads        TrackUpload[]
   /// Eventos de reproducción — de acá sale "oyentes mensuales" como
   /// COUNT(DISTINCT userId) en una ventana de 28 días, no un contador fijo
   /// (ver services/artistStats.ts). A propósito NO hay una columna
   /// `monthlyListeners`: guardar un entero que alguien más tiene que
   /// incrementar a mano es exactamente la fuente de bugs ("se desincroniza
   /// del historial real") que esta tabla de eventos evita.
-  streamLogs StreamLog[]
+  streamLogs     StreamLog[]
   /// Créditos donde este artista aparece (feats, remixes, producción) en
   /// pistas que no son suyas — distinto de `tracks`, que es su catálogo.
-  credits    TrackCredit[]
+  credits        TrackCredit[]
   editorialItems EditorialItem[] @relation("ArtistEditorialItems")
 
   @@index([name])
@@ -294,25 +283,25 @@ model Artist {
 }
 
 model Album {
-  id          String   @id @default(cuid())
-  title       String
-  coverUrl    String
-  releaseYear Int
+  id            String    @id @default(cuid())
+  title         String
+  coverUrl      String
+  releaseYear   Int
   /// Universal Product Code — identifica el LANZAMIENTO (el álbum), mientras
   /// que el ISRC identifica cada grabación dentro de él.
-  upc         String?  @unique
+  upc           String?   @unique
   /// Fecha exacta; `releaseYear` se mantiene porque el comando de búsqueda
   /// `year:` y el catálogo existente dependen de él.
-  releaseDate DateTime?
+  releaseDate   DateTime?
   /// Color dominante de la portada en HEX, calculado al procesar el artwork.
   dominantColor String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  artistId    String
-  artist      Artist        @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  tracks      Track[]
-  uploads     TrackUpload[]
+  artistId       String
+  artist         Artist          @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tracks         Track[]
+  uploads        TrackUpload[]
   editorialItems EditorialItem[]
 
   @@index([artistId])
@@ -320,47 +309,57 @@ model Album {
 }
 
 model Track {
-  id             String   @id @default(cuid())
-  title          String
-  duration       Int // segundos
-  coverUrl       String
-  audioUrl       String
-  /// Género principal — lo confirma el creador en el paso de revisión del pipeline de subida.
-  genre          Genre?
+  id       String      @id @default(cuid())
+  title    String
+  duration Int // segundos
+  coverUrl String
+  audioUrl String
+  /// Género principal — lo confirma el creador en el paso de revisión del
+  /// pipeline de subida.
+  ///
+  /// Apunta a `MusicGenre` y ya no a un enum de Postgres. El motivo es el
+  /// mismo que este esquema daba unas líneas más abajo para el ánimo: un
+  /// enum obliga a migrar la base cada vez que aparece un género nuevo. Con
+  /// el enum, la tabla `MusicGenre` que el panel cura (Trap, Drill,
+  /// Amapiano, Reguetón, Corridos Tumbados) era un vocabulario paralelo que
+  /// NINGUNA canción podía usar: lo más cerca que llegaba un tema de trap
+  /// era "hiphop", y rap no existía.
+  genreId  String?
+  genre    MusicGenre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
   /// Mood/ánimo (p. ej. "Relajado", "Enérgico"): texto curado a nivel de app
   /// (ver MOODS en schemas/validation.ts), no un enum de la base — los moods
   /// se iteran mucho más seguido que los géneros y un enum de Postgres
   /// obligaría a una migración cada vez que se agregue uno.
-  mood           String?
+  mood     String?
 
   /// --- Créditos y metadatos de catálogo ---
   /// Texto libre y no relaciones: una pista puede tener varios compositores
   /// y productores que no son usuarios de la plataforma, así que modelarlos
   /// como tablas obligaría a crear filas fantasma para cada nombre suelto.
-  composer       String?
-  producer       String?
+  composer    String?
+  producer    String?
   /// Sello discográfico — alimenta el comando de búsqueda `label:`.
-  label          String?
+  label       String?
   /// International Standard Recording Code — identificador único de la grabación (comando `isrc:`).
-  isrc           String?  @unique
-  isExplicit     Boolean  @default(false)
+  isrc        String?   @unique
+  isExplicit  Boolean   @default(false)
   /// Versión de la grabación: "Original", "Radio Edit", "Extended Mix", … Se
   /// muestra junto al título y distingue dos grabaciones del mismo tema, que
   /// por eso mismo llevan ISRC distinto.
-  version        String?
+  version     String?
   /// Fecha exacta de lanzamiento. `Album.releaseYear` sigue existiendo para
   /// el catálogo viejo y para el comando de búsqueda `year:`; esta es la que
   /// usa la programación de lanzamientos (un track con fecha futura no sale
   /// en el catálogo aunque esté APPROVED).
-  releaseDate    DateTime?
+  releaseDate DateTime?
 
   /// --- Archivo máster y derivados ---
   /// El .wav/.flac sin pérdida tal como lo subió el sello. Nunca se sirve al
   /// reproductor: es la fuente de la que salen todas las `AudioVariant`.
-  masterUrl      String?
+  masterUrl     String?
   /// Color dominante de la portada en HEX (#RRGGBB), para el fondo de las
   /// tarjetas de la app sin tener que decodificar la imagen en el cliente.
-  dominantColor  String?
+  dominantColor String?
 
   /// --- Licencias y disponibilidad ---
   /// Países ISO 3166-1 alpha-2 donde NO se puede reproducir. Lista de bloqueo
@@ -369,43 +368,43 @@ model Track {
   blockedCountries String[]
   /// Suscripción mínima. El máster FLAC sólo se sirve a PREMIUM aunque el
   /// track en sí sea FREE — eso lo decide la variante, no este campo.
-  requiredTier   SubscriptionTier @default(FREE)
+  requiredTier     SubscriptionTier @default(FREE)
 
   /// Bloqueo de esta pista en concreto, distinto de bloquear al artista
   /// entero. Es lo que se aplica cuando una denuncia prospera: la canción
   /// desaparece del catálogo y deja de sonar, pero el resto del artista
   /// sigue disponible. Reversible, a diferencia de borrarla.
-  isBlocked      Boolean  @default(false)
-  blockedReason  String?
-  blockedAt      DateTime?
+  isBlocked     Boolean   @default(false)
+  blockedReason String?
+  blockedAt     DateTime?
   /// Quién reclamó. Se guarda el NOMBRE, no sólo el id del usuario: el
   /// mensaje que ve el artista infractor tiene que seguir diciendo quién
   /// reclamó aunque esa cuenta se borre después.
-  blockedByName  String?
+  blockedByName String?
 
   /// Huella acústica del máster (ver services/fingerprint.ts). Única: si otra
   /// subida genera la misma huella es la misma grabación, y el pipeline la
   /// rechaza antes de publicarla por segunda vez.
   audioFingerprint String? @unique
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// Moderación admin — ver comentario en el enum `TrackReviewStatus`.
-  status         TrackReviewStatus @default(APPROVED)
-  reviewedById   String?
-  reviewedBy     User?             @relation("TrackReviewedBy", fields: [reviewedById], references: [id])
-  reviewedAt     DateTime?
+  status          TrackReviewStatus @default(APPROVED)
+  reviewedById    String?
+  reviewedBy      User?             @relation("TrackReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
   rejectionReason String?
 
-  artistId       String
-  artist         Artist           @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  albumId        String
-  album          Album            @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artistId String
+  artist   Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  albumId  String
+  album    Album  @relation(fields: [albumId], references: [id], onDelete: Cascade)
 
   /// Quién la subió — nulo en datos de catálogo/seed que no vinieron del pipeline de un usuario.
-  uploadedById   String?
-  uploadedBy     User?            @relation("TrackUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById String?
+  uploadedBy   User?   @relation("TrackUploadedBy", fields: [uploadedById], references: [id])
 
   playlists      PlaylistTrack[]
   favorites      Favorite[]
@@ -425,7 +424,7 @@ model Track {
   @@index([artistId])
   @@index([albumId])
   @@index([title])
-  @@index([genre])
+  @@index([genreId])
   @@index([status])
   @@index([releaseDate])
 }
@@ -441,20 +440,20 @@ model Track {
 /// sin que nadie se enterara. Calcular en la consulta es más barato que
 /// mantener sincronizada una copia.
 model EditorialSection {
-  id        String          @id @default(cuid())
+  id          String          @id @default(cuid())
   /// Título visible ("Lo nuevo", "Los mejores álbumes").
-  title     String
-  subtitle  String?
+  title       String
+  subtitle    String?
   /// Ruta amigable, única: /seccion/lo-nuevo
-  slug      String          @unique
-  kind      EditorialKind   @default(MANUAL)
-  layout    EditorialLayout @default(CAROUSEL)
+  slug        String          @unique
+  kind        EditorialKind   @default(MANUAL)
+  layout      EditorialLayout @default(CAROUSEL)
   /// Orden en la portada. Menor primero.
-  position  Int             @default(0)
+  position    Int             @default(0)
   /// Sin publicar, la sección existe en el panel pero no sale en los clientes.
-  isPublished Boolean       @default(false)
+  isPublished Boolean         @default(false)
   /// Cuántas piezas mostrar en las secciones automáticas.
-  maxItems  Int             @default(10)
+  maxItems    Int             @default(10)
 
   items     EditorialItem[]
   createdAt DateTime        @default(now())
@@ -475,12 +474,12 @@ model EditorialItem {
   section   EditorialSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   position  Int              @default(0)
 
-  trackId   String?
-  track     Track?           @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  albumId   String?
-  album     Album?           @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  artistId  String?
-  artist    Artist?          @relation("ArtistEditorialItems", fields: [artistId], references: [id], onDelete: Cascade)
+  trackId  String?
+  track    Track?  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  albumId  String?
+  album    Album?  @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artistId String?
+  artist   Artist? @relation("ArtistEditorialItems", fields: [artistId], references: [id], onDelete: Cascade)
 
   @@index([sectionId, position])
 }
@@ -493,34 +492,34 @@ model EditorialItem {
 /// hasta que exista una integración real; el panel lo muestra como
 /// "pendiente de cobro" en vez de dar por hecho que está pagado.
 model Promotion {
-  id            String          @id @default(cuid())
+  id            String @id @default(cuid())
   trackId       String
-  track         Track           @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  track         Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
   requestedById String
-  requestedBy   User            @relation("PromotionRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  requestedBy   User   @relation("PromotionRequester", fields: [requestedById], references: [id], onDelete: Cascade)
 
   /// Días solicitados. La ventana real se fija al aprobar, no al pedir:
   /// entre la solicitud y la aprobación pueden pasar días y el artista
   /// perdería parte de lo que pidió.
-  days          Int
-  status        PromotionStatus @default(PENDING_APPROVAL)
+  days     Int
+  status   PromotionStatus @default(PENDING_APPROVAL)
   /// Orden dentro de la primera fila. Menor primero.
-  position      Int             @default(0)
+  position Int             @default(0)
 
-  startsAt      DateTime?
-  endsAt        DateTime?
+  startsAt DateTime?
+  endsAt   DateTime?
 
   /// Importe calculado. Ver el comentario del modelo sobre el cobro.
-  priceCents    Int
-  paidAt        DateTime?
+  priceCents Int
+  paidAt     DateTime?
 
   reviewedById    String?
   reviewedBy      User?     @relation("PromotionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
   rejectionReason String?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, position])
   @@index([trackId])
@@ -534,20 +533,20 @@ model Promotion {
 /// canción es un hecho del servidor, y el teléfono no tiene forma de
 /// saberlo por su cuenta.
 model Notification {
-  id        String           @id @default(cuid())
-  userId    String
-  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
 
-  kind      NotificationKind
-  title     String
-  body      String
+  kind  NotificationKind
+  title String
+  body  String
 
   /// Adónde lleva al tocarla: "track", "artist", "promotion"…
   targetType String?
   targetId   String?
 
   readAt    DateTime?
-  createdAt DateTime         @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
@@ -561,17 +560,17 @@ model Notification {
 /// su cuenta, en vez de arrastrar la denuncia con él: la denuncia sigue
 /// siendo válida aunque la cuenta desaparezca.
 model TrackReport {
-  id         String       @id @default(cuid())
+  id         String  @id @default(cuid())
   trackId    String
-  track      Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  track      Track   @relation(fields: [trackId], references: [id], onDelete: Cascade)
   reporterId String?
-  reporter   User?        @relation("TrackReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reporter   User?   @relation("TrackReporter", fields: [reporterId], references: [id], onDelete: SetNull)
 
-  reason     ReportReason
+  reason  ReportReason
   /// Explicación del usuario. Obligatoria en plagio y copyright: sin decir
   /// de qué obra se trata, la denuncia no es accionable.
-  details    String?
-  status     ReportStatus @default(OPEN)
+  details String?
+  status  ReportStatus @default(OPEN)
 
   /// Resolución: quién la cerró, cuándo y con qué nota interna.
   resolvedById   String?
@@ -579,8 +578,8 @@ model TrackReport {
   resolvedAt     DateTime?
   resolutionNote String?
 
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// Un usuario no puede denunciar la misma canción dos veces: multiplicaría
   /// el contador y haría parecer masivo lo que es una sola persona.
@@ -594,25 +593,25 @@ model TrackReport {
 /// Sólo se inserta: no hay ruta que actualice ni borre filas de acá. Un log
 /// de auditoría que se puede editar no sirve como auditoría.
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   /// Quién. Se guarda además el email en texto: si la cuenta se borra, el
   /// registro tiene que seguir diciendo quién hizo qué.
   actorId    String?
-  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor      User?   @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   actorEmail String
 
   /// Qué: "artist.verify", "track.approve", "track.takedown"…
-  action     String
+  action      String
   /// Sobre qué objeto, y una etiqueta legible para no tener que ir a
   /// buscarlo (puede que ya no exista).
-  targetType String
-  targetId   String?
+  targetType  String
+  targetId    String?
   targetLabel String?
 
   /// Detalle libre de la acción (valores antes/después, motivo).
-  metadata   Json?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([actorId])
@@ -629,13 +628,13 @@ model AuditLog {
 /// fantasma que nadie puede reclamar. Cuando el crédito SÍ corresponde a un
 /// artista de Peyma, `artistId` lo enlaza y la app puede linkear su perfil.
 model TrackCredit {
-  id       String     @id @default(cuid())
-  trackId  String
-  track    Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  role     CreditRole
-  name     String
-  artistId String?
-  artist   Artist?    @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  id           String     @id @default(cuid())
+  trackId      String
+  track        Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  role         CreditRole
+  name         String
+  artistId     String?
+  artist       Artist?    @relation(fields: [artistId], references: [id], onDelete: SetNull)
   /// Porcentaje de regalías de esta persona sobre la grabación (0–100).
   /// Nulo mientras no se haya configurado el split.
   splitPercent Float?
@@ -648,20 +647,20 @@ model TrackCredit {
 /// Una versión transcodificada y servible de una pista. El reproductor pide
 /// la mejor que su conexión y su suscripción permitan.
 model AudioVariant {
-  id          String       @id @default(cuid())
-  trackId     String
-  track       Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  quality     AudioQuality
+  id           String           @id @default(cuid())
+  trackId      String
+  track        Track            @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  quality      AudioQuality
   /// Contenedor/códec real del archivo: "m4a", "flac", "ogg".
-  format      String
+  format       String
   /// Nulo en FLAC: el bitrate de un sin pérdida depende del material.
-  bitrateKbps Int?
-  url         String
-  sizeBytes   Int
+  bitrateKbps  Int?
+  url          String
+  sizeBytes    Int
   /// Suscripción mínima para servir ESTA variante. LOSSLESS va a PREMIUM
   /// aunque el track sea gratuito.
   requiredTier SubscriptionTier @default(FREE)
-  createdAt   DateTime     @default(now())
+  createdAt    DateTime         @default(now())
 
   /// Una sola variante por calidad y pista: reprocesar reemplaza, no duplica.
   @@unique([trackId, quality])
@@ -672,23 +671,23 @@ model AudioVariant {
 /// sólo en memoria para que el panel pueda mostrar el estado, los errores y
 /// reintentar — y para que un reinicio del servidor no pierda la cola.
 model ProcessingJob {
-  id          String    @id @default(cuid())
-  kind        JobKind
-  status      JobStatus @default(QUEUED)
-  trackId     String?
-  track       Track?    @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  uploadId    String?
-  upload      TrackUpload? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  id           String       @id @default(cuid())
+  kind         JobKind
+  status       JobStatus    @default(QUEUED)
+  trackId      String?
+  track        Track?       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  uploadId     String?
+  upload       TrackUpload? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   /// Parámetros del trabajo (p. ej. qué calidad transcodificar).
-  payload     Json?
+  payload      Json?
   /// Resultado resumido, para poder inspeccionar sin volver a correrlo.
-  result      Json?
+  result       Json?
   errorMessage String?
-  attempts    Int       @default(0)
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  attempts     Int          @default(0)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([status, createdAt])
   @@index([trackId])
@@ -700,9 +699,9 @@ model ProcessingJob {
 /// pistas "parecidas" por distancia (coseno/euclidiana) en vez de comparar
 /// campo por campo.
 model AudioAnalysis {
-  id               String      @id @default(cuid())
-  trackId          String      @unique
-  track            Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  trackId String @unique
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   bpm              Float
   /// Clase de altura 0–11 (0=C, 1=C#/Db, … 11=B), igual que Spotify's Audio Features.
@@ -723,21 +722,21 @@ model AudioAnalysis {
   /// estos dos son la medición de norma. Nulos hasta que corre el trabajo
   /// LOUDNESS, porque el catálogo viejo nunca pasó por ffmpeg.
   /// Loudness integrado en LUFS (negativo; objetivo de la plataforma: -14).
-  integratedLufs   Float?
+  integratedLufs Float?
   /// Pico real en dBTP (negativo; techo de la plataforma: -1).
-  truePeakDb       Float?
+  truePeakDb     Float?
   /// Ganancia en dB que hay que aplicar para llegar al objetivo. Se guarda en
   /// vez de reescribir el archivo: así el máster queda intacto y cambiar el
   /// objetivo de la plataforma no obliga a retranscodificar todo el catálogo.
-  gainDb           Float?
+  gainDb         Float?
 
   /// Picos de amplitud 0–1 para dibujar la barra de onda (ver
   /// services/waveform.ts). Array plano de ~200 puntos: cabe en la misma
   /// fila y evita una tabla aparte o un archivo JSON suelto por pista.
-  waveformPeaks    Float[]
+  waveformPeaks   Float[]
   /// Qué versión del analizador lo generó — permite reanalizar en bloque si el algoritmo cambia.
-  analyzerVersion  String
-  analyzedAt       DateTime    @default(now())
+  analyzerVersion String
+  analyzedAt      DateTime @default(now())
 
   @@index([bpm])
   @@index([musicalKey])
@@ -746,9 +745,9 @@ model AudioAnalysis {
 /// Letra de una pista — modelo aparte (no columnas en Track) para que listar
 /// canciones no arrastre bloques de texto grandes en cada fila.
 model Lyrics {
-  id        String   @id @default(cuid())
-  trackId   String   @unique
-  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  trackId String @unique
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   plainText String?
   /// Letra sincronizada estilo LRC: `[{ "timeMs": number, "text": string }, …]`.
@@ -763,22 +762,22 @@ model Lyrics {
 /// confirmar el creador se materializa en un `Track` real + `AudioAnalysis`
 /// + `Lyrics`. Mientras tanto nada de esto es visible en el catálogo.
 model TrackUpload {
-  id                String       @id @default(cuid())
-  status            UploadStatus @default(DRAFT)
-  errorMessage      String?
+  id           String       @id @default(cuid())
+  status       UploadStatus @default(DRAFT)
+  errorMessage String?
 
-  uploadedById      String
-  uploadedBy        User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  artistId          String
-  artist            Artist       @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  artistId     String
+  artist       Artist  @relation(fields: [artistId], references: [id], onDelete: Cascade)
   /// Si el creador no elige álbum, se publica como sencillo (álbum de una sola pista, creado al publicar).
-  albumId           String?
-  album             Album?       @relation(fields: [albumId], references: [id])
+  albumId      String?
+  album        Album?  @relation(fields: [albumId], references: [id])
 
-  title             String?
-  coverUrl          String?
-  audioUrl          String?
-  durationSeconds   Int?
+  title           String?
+  coverUrl        String?
+  audioUrl        String?
+  durationSeconds Int?
 
   lyricsPlainDraft  String?
   lyricsSyncedDraft Json?
@@ -786,26 +785,27 @@ model TrackUpload {
   /// Snapshot del `AudioAnalysisResult` mientras está en borrador — se copia
   /// a `AudioAnalysis` recién al publicar, así el creador puede corregir
   /// género/mood antes de que quede fijo.
-  analysisDraft     Json?
-  genreOverride     Genre?
-  moodOverride      String?
+  analysisDraft   Json?
+  genreOverrideId String?
+  genreOverride   MusicGenre? @relation(fields: [genreOverrideId], references: [id], onDelete: SetNull)
+  moodOverride    String?
 
-  publishedTrackId  String?      @unique
-  publishedTrack    Track?       @relation(fields: [publishedTrackId], references: [id])
+  publishedTrackId String? @unique
+  publishedTrack   Track?  @relation(fields: [publishedTrackId], references: [id])
 
   /// Máster sin pérdida subido directo a S3/R2 con URL firmada — el archivo
   /// nunca pasa por el proceso de la API (ver services/storage.ts).
-  masterUrl         String?
+  masterUrl       String?
   /// Clave del objeto en el bucket mientras la subida está en curso. Se
   /// guarda al firmar la URL para poder verificar después que el archivo
   /// llegó de verdad: el cliente sube directo y podría no avisar nunca.
-  masterObjectKey   String?
+  masterObjectKey String?
 
   /// Trabajos de procesamiento disparados por esta subida.
-  jobs              ProcessingJob[]
+  jobs ProcessingJob[]
 
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([uploadedById, status])
 }
@@ -819,9 +819,9 @@ model Playlist {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  ownerId     String
-  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  tracks      PlaylistTrack[]
+  ownerId String
+  owner   User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tracks  PlaylistTrack[]
 
   /// Retirada por moderación: desaparece del catálogo público pero su dueño
   /// la conserva.
@@ -850,9 +850,9 @@ model Playlist {
 }
 
 model PlaylistTrack {
-  id         String   @id @default(cuid())
-  position   Int
-  addedAt    DateTime @default(now())
+  id       String   @id @default(cuid())
+  position Int
+  addedAt  DateTime @default(now())
 
   playlistId String
   playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
@@ -867,10 +867,10 @@ model Favorite {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trackId   String
-  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@unique([userId, trackId])
   @@index([userId])
@@ -880,10 +880,10 @@ model RecentlyPlayed {
   id       String   @id @default(cuid())
   playedAt DateTime @default(now())
 
-  userId   String
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trackId  String
-  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   // Una fila por (usuario, canción): repetir una canción actualiza playedAt
   // en vez de acumular duplicados sin límite en la tabla.
@@ -898,10 +898,10 @@ model Follow {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  userId    String
-  user      User     @relation("UserFollowsArtists", fields: [userId], references: [id], onDelete: Cascade)
-  artistId  String
-  artist    Artist   @relation("ArtistFollowers", fields: [artistId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation("UserFollowsArtists", fields: [userId], references: [id], onDelete: Cascade)
+  artistId String
+  artist   Artist @relation("ArtistFollowers", fields: [artistId], references: [id], onDelete: Cascade)
 
   @@unique([userId, artistId])
   @@index([artistId])
@@ -925,8 +925,8 @@ model StreamLog {
   /// de densidad por zona y no permite ubicar a nadie en su casa. Guardar
   /// la coordenada exacta daría un historial de movimientos de cada
   /// usuario, que es un dato que esta plataforma no necesita.
-  latitude      Float?
-  longitude     Float?
+  latitude  Float?
+  longitude Float?
 
   /// Segundos realmente escuchados de la pista.
   ///
@@ -939,11 +939,11 @@ model StreamLog {
   secondsPlayed Int?
 
   userId   String
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   trackId  String
-  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  track    Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
   artistId String
-  artist   Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  artist   Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
 
   @@index([artistId, playedAt])
   @@index([userId, playedAt])
@@ -956,17 +956,17 @@ model StreamLog {
 /// "bloque sur" y "BLOQUE  SUR" serían tres términos distintos en el ranking
 /// y ninguno destacaría.
 model SearchLog {
-  id         String   @id @default(cuid())
+  id          String   @id @default(cuid())
   /// Lo que escribió el usuario, tal cual.
-  query      String
+  query       String
   /// Minúsculas, sin acentos y con espacios colapsados — la clave de agrupación.
-  normalized String
+  normalized  String
   /// Cuántos resultados devolvió. Un término muy buscado con 0 resultados es
   /// justamente lo más valioso: es catálogo que falta.
   resultCount Int
-  userId     String?
-  user       User?    @relation("UserSearches", fields: [userId], references: [id], onDelete: SetNull)
-  createdAt  DateTime @default(now())
+  userId      String?
+  user        User?    @relation("UserSearches", fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 
   @@index([normalized, createdAt])
   @@index([createdAt])
@@ -1018,6 +1018,9 @@ model MusicGenre {
   position  Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  tracks  Track[]
+  uploads TrackUpload[]
 
   @@index([isActive, position])
 }

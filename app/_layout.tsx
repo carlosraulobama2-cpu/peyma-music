@@ -10,7 +10,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import TrackPlayer from 'react-native-track-player';
 import { playbackService } from '../src/services/trackPlayerService';
 import { useSetupTrackPlayer, useTrackPlayer, useListeningAnalytics } from '../src/hooks';
-import { useAuthStore } from '../src/store';
+import { useAuthStore, useArtistStore } from '../src/store';
 import { useTheme } from '../src/theme';
 import { ErrorBoundary, ToastHost, SheetHost } from '../src/components';
 
@@ -79,6 +79,20 @@ function useAuthGate() {
       router.replace('/(tabs)');
     }
   }, [isAuthenticated, isAuthLoading, navigationState?.key, router, segments]);
+
+  /**
+   * El perfil de artista se vuelve a pedir al servidor en cada sesión.
+   *
+   * `artistStore` se persiste en el teléfono, así que sin esto la app se
+   * quedaba con la copia del día que se creó el perfil: editarlo desde la
+   * web no llegaba nunca, y el estudio y la página pública del artista
+   * mostraban datos distintos de la misma persona.
+   */
+  const syncArtistProfile = useArtistStore((s) => s.syncFromServer);
+  useEffect(() => {
+    if (!isAuthenticated || isAuthLoading) return;
+    void syncArtistProfile();
+  }, [isAuthenticated, isAuthLoading, syncArtistProfile]);
 }
 
 function RootNavigator() {

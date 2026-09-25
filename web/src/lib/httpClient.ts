@@ -33,6 +33,28 @@ function notifyMaintenance(message: string): void {
   for (const listener of maintenanceListeners) listener(message);
 }
 
+/**
+ * Aviso global de sesión caducada.
+ *
+ * El token dura 7 días y no se renueva, así que caduca tarde o temprano con
+ * la app abierta. Hasta ahora sólo se miraba el 401 al restaurar la sesión
+ * al arrancar: si caducaba a mitad de uso, cada pantalla fallaba con un
+ * error genérico y la interfaz seguía diciendo que estabas dentro, con tu
+ * nombre y tu avatar. Se borra el token y se avisa una sola vez, igual que
+ * con el mantenimiento.
+ */
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) listener();
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -122,6 +144,16 @@ async function request<T>(path: string, { method = "GET", body, skipAuth }: Requ
      */
     if (response.status === 503 && code === 'maintenance_mode') {
       notifyMaintenance(extractErrorMessage(data, response.status));
+    }
+
+    /**
+     * Un 401 con token es una sesión que ya no vale. Se excluye `skipAuth`
+     * a propósito: el login devuelve 401 cuando la contraseña está mal, y
+     * eso no es una sesión caducada sino un intento fallido.
+     */
+    if (response.status === 401 && !skipAuth && getAuthToken()) {
+      clearAuthToken();
+      notifyUnauthorized();
     }
 
     throw new ApiError(extractErrorMessage(data, response.status), response.status, code);

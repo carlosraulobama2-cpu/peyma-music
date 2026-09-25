@@ -35,7 +35,7 @@ const CARD_TRACK_SELECT = {
   title: true,
   coverUrl: true,
   duration: true,
-  genre: true,
+  genre: { select: { name: true, slug: true } },
   isExplicit: true,
   dominantColor: true,
   artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
@@ -49,10 +49,48 @@ const PUBLIC_WHERE: Prisma.TrackWhereInput = {
   artist: { isBlocked: false },
 };
 
+/**
+ * Lo que encaja con los géneros favoritos de quien mira.
+ *
+ * `favoriteGenres` se venía pidiendo en el alta —un paso entero del
+ * registro, en la web y en la app— y no lo leía NADIE: se guardaba y ahí
+ * moría. Pedirle a alguien que declare sus gustos y no usarlos para nada es
+ * peor que no preguntarle.
+ *
+ * Se cruza contra tres cosas porque el selector ofrece las tres: el `slug`
+ * del género (`trap`), su nombre visible (`Trap`) y el ánimo (`Melancólico`,
+ * que sigue siendo texto libre). Lo guardado históricamente son etiquetas
+ * visibles, así que buscar por nombre además de por slug es lo que hace que
+ * las cuentas antiguas sigan funcionando sin tocarles la fila: lo que ya no
+ * corresponde a nada del catálogo simplemente no casa, y si mañana alguien
+ * crea ese género en el panel, empieza a casar solo.
+ */
+async function tracksParaTusGeneros(favoritos: string[]): Promise<Prisma.TrackGetPayload<{ select: typeof CARD_TRACK_SELECT }>[]> {
+  if (favoritos.length === 0) return [];
+
+  const enMinuscula = favoritos.map((valor) => valor.toLowerCase());
+  return prisma.track.findMany({
+    where: {
+      ...PUBLIC_WHERE,
+      OR: [{ genre: { slug: { in: enMinuscula } } }, { genre: { name: { in: favoritos } } }, { mood: { in: favoritos } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: ROW_SIZE,
+    select: CARD_TRACK_SELECT,
+  });
+}
+
 router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id ?? null;
 
-  const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, topArtists] = await Promise.all([
+  // Los gustos declarados, para la fila personalizada. Va aparte y antes del
+  // resto porque de su resultado depende una de las consultas.
+  const favoritos = userId
+    ? (await prisma.user.findUnique({ where: { id: userId }, select: { favoriteGenres: true } }))?.favoriteGenres ?? []
+    : [];
+
+  const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, topArtists, paraTi] =
+    await Promise.all([
     getActivePromotions(),
     getPublishedSections(),
     getTrendingTracks(ROW_SIZE, 28),
@@ -100,7 +138,8 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
        ORDER BY listeners DESC, a."name" ASC
        LIMIT 12
     `,
-  ]);
+      tracksParaTusGeneros(favoritos),
+    ]);
 
   const recentlyPlayed = recentRows.map((row) => row.track);
 
@@ -117,10 +156,15 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
    * fila: son los mismos identificadores repetidos entre filas y agruparlos
    * evita tanto el problema N+1 como contar dos veces.
    */
-  const cardIds = [...new Set([...newReleases, ...recentlyPlayed].map((track) => track.id))];
+  const cardIds = [...new Set([...newReleases, ...recentlyPlayed, ...paraTi].map((track) => track.id))];
   const cardPlayCounts = await getPlayCounts(cardIds);
-  const withPlays = <T extends { id: string }>(track: T) => ({
+  // `genre` se aplana aquí a texto: la portada la consumen la app y la web,
+  // que pintan el género directamente. Desde que es una relación, mandar el
+  // objeto rompería esas tarjetas.
+  const withPlays = <T extends { id: string; genre?: { name: string; slug: string } | null }>(track: T) => ({
     ...track,
+    genre: track.genre?.name ?? null,
+    genreSlug: track.genre?.slug ?? null,
     playCount: cardPlayCounts.get(track.id) ?? 0,
   });
 
@@ -155,6 +199,13 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
     quickAccess,
     rows: [
       { key: 'recent', title: 'Escuchado recientemente', tracks: recentlyPlayed.map(withPlays) },
+      /**
+       * Va antes de tendencias a propósito: lo que encaja con lo que dijo
+       * que le gusta pesa más que lo que escucha todo el mundo. Si no tiene
+       * gustos declarados o ninguno casa, el `filter` de abajo la quita
+       * entera en vez de dejar un título con la fila vacía.
+       */
+      { key: 'forYou', title: 'Porque te gustan estos géneros', tracks: paraTi.map(withPlays) },
       {
         key: 'trending',
         title: 'Tendencias en los últimos 28 días',

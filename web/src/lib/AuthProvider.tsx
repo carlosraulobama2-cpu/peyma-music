@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
-import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken } from "./httpClient";
+import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken, onUnauthorized } from "./httpClient";
 import { GOOGLE_CLIENT_ID } from "./googleAuthConfig";
 import { invalidateHomeFeed } from "./useHomeFeed";
 
@@ -67,6 +67,13 @@ function toAuthError(error: unknown, fallback: string): AuthError {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<BackendUser | null>(null);
+
+  /**
+   * Si el token caduca con la app abierta, el cliente HTTP ya lo borró y
+   * avisa aquí. Sin esto la sesión quedaba en un estado imposible: la
+   * interfaz mostraba al usuario dentro y cada acción fallaba.
+   */
+  useEffect(() => onUnauthorized(() => setUser(null)), []);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

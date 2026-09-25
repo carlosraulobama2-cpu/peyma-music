@@ -31,6 +31,7 @@ import {
   resolveReportSchema,
   blockTrackSchema,
   reorderPromotionsSchema,
+  setTrackGenreSchema,
 } from '../schemas/validation';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { enqueue, retryJob } from '../services/jobQueue';
@@ -92,11 +93,27 @@ router.get('/moderation/:id/preview', authFromHeaderOrQuery, requireRole('ADMIN'
 
 router.use(authMiddleware, requireRole('ADMIN'));
 
+/**
+ * Aplana la relación de género a texto antes de responder.
+ *
+ * El panel pinta `track.genre` directamente en media docena de pantallas
+ * (TrackRow, ArtistDetail, Reports, Trending, PlaylistDetail…). Desde que el
+ * género es una relación y no una columna, devolver el objeto haría que React
+ * intentara renderizarlo y reventara esas listas.
+ */
+function conGeneroPlano<T extends { genre?: { name: string; slug: string } | null }>(track: T) {
+  return { ...track, genre: track.genre?.name ?? null, genreSlug: track.genre?.slug ?? null };
+}
+
 const TRACK_WITH_DETAILS = {
   include: {
     artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
     album: { select: { id: true, title: true, coverUrl: true } },
     uploadedBy: { select: { id: true, displayName: true, email: true } },
+    // `genre` dejó de ser columna escalar: sin incluirlo, la cola de
+    // moderación llegaría al panel SIN ritmo y nadie lo notaría hasta ver
+    // el hueco. `aplanarGenero` lo devuelve a texto para el panel.
+    genre: { select: { name: true, slug: true } },
     // La onda y la sonoridad se incluyen para que el revisor vea de un
     // vistazo si la pista está vacía, recortada o con el volumen disparado,
     // antes siquiera de darle al play.
@@ -120,7 +137,7 @@ router.get('/moderation/pending', async (req: AuthRequest, res: Response) => {
     prisma.track.count({ where: { status: 'PENDING_REVIEW' } }),
   ]);
 
-  res.json({ tracks, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  res.json({ tracks: tracks.map(conGeneroPlano), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
 
 router.patch('/moderation/:id/review', async (req: AuthRequest, res: Response) => {
@@ -203,7 +220,7 @@ router.get('/artists/:id', async (req: AuthRequest, res: Response) => {
         title: true,
         coverUrl: true,
         duration: true,
-        genre: true,
+        genre: { select: { name: true, slug: true } },
         status: true,
         isBlocked: true,
         blockedReason: true,
@@ -226,7 +243,7 @@ router.get('/artists/:id', async (req: AuthRequest, res: Response) => {
     artist,
     stats,
     denunciasPendientes: reports,
-    tracks: tracks.map((t) => ({ ...t, playCount: plays.get(t.id) ?? 0 })),
+    tracks: tracks.map((t) => ({ ...conGeneroPlano(t), playCount: plays.get(t.id) ?? 0 })),
   });
 });
 
@@ -518,9 +535,13 @@ router.get('/metrics', async (_req: AuthRequest, res: Response) => {
        ORDER BY 1
     `,
     prisma.$queryRaw<{ genre: string | null; streams: bigint }[]>`
-      SELECT t."genre"::text AS genre, COUNT(*) AS streams
+      -- El género vive en MusicGenre desde la migración
+      -- 20260925090000_genre_relacional: la columna Track.genre ya no existe
+      -- y esta consulta reventaba las métricas del panel con un 500.
+      SELECT g."name" AS genre, COUNT(*) AS streams
         FROM "StreamLog" s
         JOIN "Track" t ON t."id" = s."trackId"
+        LEFT JOIN "MusicGenre" g ON g."id" = t."genreId"
        WHERE s."playedAt" >= ${windowStart}
        GROUP BY 1
        ORDER BY 2 DESC
@@ -898,7 +919,7 @@ router.get('/promotions', async (_req: AuthRequest, res: Response) => {
             title: true,
             coverUrl: true,
             duration: true,
-            genre: true,
+            genre: { select: { name: true, slug: true } },
             artist: { select: { id: true, name: true, isVerified: true } },
           },
         },
@@ -913,6 +934,7 @@ router.get('/promotions', async (_req: AuthRequest, res: Response) => {
     // no debería depender de eso.
     promotions: promotions.map((promotion) => ({
       ...promotion,
+      track: conGeneroPlano(promotion.track),
       msRemaining: promotion.endsAt ? Math.max(0, promotion.endsAt.getTime() - now.getTime()) : null,
     })),
     summary: Object.fromEntries(counts.map((row) => [row.status, row._count._all])),
@@ -1036,7 +1058,7 @@ router.get('/reports', async (req: AuthRequest, res: Response) => {
             title: true,
             coverUrl: true,
             duration: true,
-            genre: true,
+            genre: { select: { name: true, slug: true } },
             isBlocked: true,
             status: true,
             artist: { select: { id: true, name: true, isVerified: true } },
@@ -1061,7 +1083,11 @@ router.get('/reports', async (req: AuthRequest, res: Response) => {
   const reportsPerTrack = new Map(counts.map((row) => [row.trackId, row._count._all]));
 
   res.json({
-    reports: reports.map((report) => ({ ...report, totalReportsForTrack: reportsPerTrack.get(report.trackId) ?? 1 })),
+    reports: reports.map((report) => ({
+      ...report,
+      track: conGeneroPlano(report.track),
+      totalReportsForTrack: reportsPerTrack.get(report.trackId) ?? 1,
+    })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     summary: Object.fromEntries(byStatus.map((row) => [row.status, row._count._all])),
   });
@@ -1162,6 +1188,43 @@ router.patch('/reports/:id', async (req: AuthRequest, res: Response) => {
  * Distinto de bloquear al artista: sólo desaparece esta canción, el resto
  * de su catálogo sigue disponible. Y distinto de borrarla: es reversible.
  */
+/**
+ * Ritmo de una canción publicada.
+ *
+ * Hace falta porque hasta ahora el género se fijaba solo en el momento de
+ * publicar y no había forma de corregirlo después. Con el género aleatorio
+ * que ponía el analizador, eso dejaba el catálogo con etiquetas falsas y sin
+ * manera de arreglarlas desde ningún sitio.
+ */
+router.patch('/tracks/:id/genre', async (req: AuthRequest, res: Response) => {
+  const { id } = idParamSchema.parse(req.params);
+  const { genreId } = setTrackGenreSchema.parse(req.body);
+
+  const track = await prisma.track.findUnique({ where: { id }, select: { id: true, title: true } });
+  if (!track) throw new NotFoundError('Pista');
+
+  if (genreId) {
+    const genero = await prisma.musicGenre.findUnique({ where: { id: genreId }, select: { id: true } });
+    if (!genero) throw new BadRequestError('Ese ritmo no existe');
+  }
+
+  const updated = await prisma.track.update({
+    where: { id },
+    data: { genreId },
+    select: { id: true, title: true, genre: { select: { id: true, name: true, slug: true } } },
+  });
+
+  await record(req, {
+    action: 'track.genre',
+    targetType: 'track',
+    targetId: id,
+    targetLabel: track.title,
+    metadata: { ritmo: updated.genre?.name ?? 'sin ritmo' },
+  });
+
+  res.json({ track: { id: updated.id, title: updated.title, genre: updated.genre?.name ?? null, genreId: updated.genre?.id ?? null } });
+});
+
 router.patch('/tracks/:id/block', async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);
   const { isBlocked, reason } = blockTrackSchema.parse(req.body);
@@ -1389,7 +1452,7 @@ router.get('/playlists/:id', async (req: AuthRequest, res: Response) => {
               title: true,
               coverUrl: true,
               duration: true,
-              genre: true,
+              genre: { select: { name: true, slug: true } },
               status: true,
               isBlocked: true,
               artist: { select: { id: true, name: true } },

@@ -8,7 +8,7 @@
  * match por vector no le importa de dónde salieron los números.
  */
 import { prisma } from '../prismaClient';
-import type { Genre, PlaylistGeneratorType, Prisma } from '@prisma/client';
+import type { PlaylistGeneratorType, Prisma } from '@prisma/client';
 
 const SIMILAR_TRACKS_LIMIT_DEFAULT = 20;
 /** Cuántas pistas recientes/favoritas del usuario entran al cálculo del "centroide" de gustos. */
@@ -120,7 +120,9 @@ const GENERATED_PLAYLIST_SIZE = 20;
 export async function generateAutoPlaylist(
   userId: string,
   type: PlaylistGeneratorType,
-  options: { seedTrackId?: string; genre?: Genre } = {},
+  // `genre` es el slug de un `MusicGenre`, no un valor de enum: el
+  // vocabulario vive en la base y se edita desde el panel.
+  options: { seedTrackId?: string; genre?: string } = {},
 ) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { displayName: true } });
 
@@ -135,7 +137,7 @@ export async function generateAutoPlaylist(
     description = 'Pistas con un ritmo y una energía parecidos';
   } else if (type === 'GENRE_MIX' && options.genre) {
     const tracks = await prisma.track.findMany({
-      where: { genre: options.genre, status: 'APPROVED', artist: { isBlocked: false } },
+      where: { genre: { slug: options.genre }, status: 'APPROVED', artist: { isBlocked: false } },
       take: GENERATED_PLAYLIST_SIZE,
       orderBy: { createdAt: 'desc' },
     });

@@ -91,8 +91,23 @@ export interface ArtistSummary {
  * backend ahora se lo rechaza.
  */
 export async function fetchArtists(): Promise<ArtistSummary[]> {
-  const { artists } = await http.get<{ artists: ArtistSummary[] }>("/artists?limit=100");
-  return artists;
+  // Se recorren TODAS las páginas. Antes se pedía `?limit=100` y se
+  // devolvía esa primera página como si fuera el catálogo entero: con 101
+  // artistas, el desplegable mostraba una lista incompleta con pinta de
+  // completa y el artista 101 sencillamente no existía para quien publicaba.
+  const todos: ArtistSummary[] = [];
+  for (let page = 1; ; page += 1) {
+    const { artists, pagination } = await http.get<{
+      artists: ArtistSummary[];
+      pagination?: { page: number; totalPages: number };
+    }>(`/artists?limit=100&page=${page}`);
+
+    todos.push(...artists);
+    // Sin `pagination` (o con una página vacía) se para: mejor quedarse con
+    // lo que hay que girar en un bucle contra un endpoint que no pagina.
+    if (!pagination || artists.length === 0 || page >= pagination.totalPages) break;
+  }
+  return todos;
 }
 
 /** El perfil de artista de quien pregunta, o `null` si todavía no tiene. */

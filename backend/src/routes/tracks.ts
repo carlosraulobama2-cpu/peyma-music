@@ -13,6 +13,11 @@ const router = Router();
 
 const TRACK_INCLUDE = {
   artist: { select: { id: true, name: true, imageUrl: true, isVerified: true } },
+  // El género dejó de ser una columna escalar: sin incluirlo aquí, las
+  // respuestas saldrían SIN género y nadie se enteraría hasta ver el hueco
+  // en la interfaz. `serializeTrack` lo vuelve a aplanar a texto para que el
+  // contrato con los clientes no cambie.
+  genre: { select: { name: true, slug: true, color: true } },
   album: { select: { id: true, title: true, coverUrl: true } },
   _count: { select: { favorites: true, playlists: true, recentlyPlayed: true } },
 } satisfies Prisma.TrackInclude;
@@ -51,6 +56,24 @@ const TRACK_DETAIL_INCLUDE = {
   },
 } satisfies Prisma.TrackInclude;
 
+/**
+ * Aplana el género a texto antes de responder.
+ *
+ * Los clientes pintan `track.genre` directamente (ver `TrackList` y
+ * `NowPlayingPanel` en la web), así que devolver el objeto de la relación
+ * haría que React intentara renderizar un objeto y reventara la lista. Se
+ * manda el NOMBRE, que es lo legible ("Corridos Tumbados"), y aparte el
+ * slug, que es lo que viaja en las URLs y en el filtro `primaryGenre`.
+ */
+function serializeTrack<T extends { genre?: { name: string; slug: string; color: string } | null }>(track: T) {
+  return {
+    ...track,
+    genre: track.genre?.name ?? null,
+    genreSlug: track.genre?.slug ?? null,
+    genreColor: track.genre?.color ?? null,
+  };
+}
+
 router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const { page, limit, search, genre, primaryGenre, mood, artistId, albumId } = querySchema.parse(req.query);
   const skip = (page - 1) * limit;
@@ -66,7 +89,7 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
   if (artistId) conditions.push({ artistId });
   if (albumId) conditions.push({ albumId });
   if (genre) conditions.push({ artist: { genres: { has: genre } } });
-  if (primaryGenre) conditions.push({ genre: primaryGenre });
+  if (primaryGenre) conditions.push({ genre: { slug: primaryGenre } });
   if (mood) conditions.push({ mood });
   // La búsqueda pasa por el parser de comandos (`genre:`, `year:1990-1999`,
   // AND/OR/NOT, comillas…). Una query sin comandos degrada sola a búsqueda
@@ -118,7 +141,7 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
   const playCounts = await getPlayCounts(tracks.map((track) => track.id));
 
   res.json({
-    tracks: tracks.map((track) => ({ ...track, playCount: playCounts.get(track.id) ?? 0 })),
+    tracks: tracks.map((track) => ({ ...serializeTrack(track), playCount: playCounts.get(track.id) ?? 0 })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 });
@@ -139,7 +162,7 @@ router.get('/liked', authMiddleware, async (req: AuthRequest, res: Response) => 
   ]);
 
   res.json({
-    tracks: favorites.map((f) => f.track),
+    tracks: favorites.map((f) => serializeTrack(f.track)),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 });
@@ -181,13 +204,44 @@ router.get('/:id', optionalAuthMiddleware, async (req: AuthRequest, res: Respons
     isLiked = !!favorite;
   }
 
-  res.json({ track: { ...track, isLiked } });
+  res.json({ track: { ...serializeTrack(track), isLiked } });
+});
+
+/**
+ * Letra de una canción, en endpoint propio y no dentro del detalle.
+ *
+ * Mismo criterio que `waveformPeaks` unas líneas más arriba: una letra
+ * sincronizada son cientos de objetos `{ timeMs, text }` y sólo hace falta
+ * cuando alguien abre la vista de letra, que es una minoría de las
+ * reproducciones. Dentro de `TRACK_DETAIL_INCLUDE` viajaría en cada apertura
+ * de canción sin que nadie la mirase.
+ *
+ * Devuelve 200 con `lyrics: null` cuando la canción existe pero no tiene
+ * letra: para el cliente eso es un estado normal que se pinta ("esta canción
+ * no tiene letra"), no un error que haya que reintentar.
+ */
+router.get('/:id/lyrics', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
+  const { id } = idParamSchema.parse(req.params);
+
+  const track = await prisma.track.findUnique({
+    where: { id },
+    select: {
+      isBlocked: true,
+      lyrics: { select: { plainText: true, synced: true, language: true, updatedAt: true } },
+    },
+  });
+
+  // Una canción retirada no enseña la letra ni a quien tenga el enlace: la
+  // reclamación de derechos cubre también el texto.
+  if (!track || track.isBlocked) throw new NotFoundError('Canción');
+
+  res.json({ lyrics: track.lyrics ?? null });
 });
 
 router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   const data = createTrackSchema.parse(req.body);
   const track = await prisma.track.create({ data, include: TRACK_INCLUDE });
-  res.status(201).json({ track });
+  res.status(201).json({ track: serializeTrack(track) });
 });
 
 router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -198,7 +252,7 @@ router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => 
   if (!exists) throw new NotFoundError('Canción');
 
   const track = await prisma.track.update({ where: { id }, data, include: TRACK_INCLUDE });
-  res.json({ track });
+  res.json({ track: serializeTrack(track) });
 });
 
 router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {

@@ -19,6 +19,7 @@ import {
   describeCoverRejection,
 } from "../../../lib/fileTypes";
 import { uploadTrack, UPLOAD_STEPS, type UploadStep } from "../../../lib/uploadPipeline";
+import { fetchGenreCatalog, type GenreOption } from "../../../lib/genres";
 
 /**
  * Subir una canción desde la web.
@@ -99,6 +100,9 @@ export default function UploadPage() {
   const [artistId, setArtistId] = useState("");
 
   const [title, setTitle] = useState("");
+  const [lyrics, setLyrics] = useState("");
+  const [genreId, setGenreId] = useState("");
+  const [generos, setGeneros] = useState<GenreOption[]>([]);
   const [audio, setAudio] = useState<File | null>(null);
   const [cover, setCover] = useState<File | null>(null);
   const [step, setStep] = useState<UploadStep | null>(null);
@@ -158,6 +162,15 @@ export default function UploadPage() {
     void cargarPerfil();
   }, [user, esAdmin, cargarPerfil]);
 
+  useEffect(() => {
+    // Un fallo aquí no bloquea la subida: el ritmo es opcional, así que el
+    // desplegable se queda sólo con "Sin especificar" en vez de plantarle un
+    // error a alguien que venía a publicar una canción.
+    fetchGenreCatalog()
+      .then(setGeneros)
+      .catch(() => setGeneros([]));
+  }, []);
+
   const busy = step !== null;
   const canSubmit = Boolean(artistId && title.trim() && audio && cover) && !busy;
 
@@ -173,11 +186,15 @@ export default function UploadPage() {
         title: title.trim(),
         audio,
         cover,
+        lyrics,
+        genreId: genreId || null,
         token: getAuthToken(),
         onStep: setStep,
       });
       setDone(track.title);
       setTitle("");
+      setLyrics("");
+      setGenreId("");
       setAudio(null);
       setCover(null);
       setTandaArchivos((n) => n + 1);
@@ -262,6 +279,52 @@ export default function UploadPage() {
             placeholder="Nombre de la canción"
             className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
           />
+        </label>
+
+        {/*
+          El género lo elige quien sube, y puede dejarlo en blanco.
+
+          Antes no se preguntaba: lo ponía el "analizador" cogiendo uno de
+          ocho al azar, así que un tema de trap podía publicarse como lofi.
+          Ahora la lista sale de la tabla que se cura desde Ritmos en el
+          panel, o sea que añadir Afrobeat o Rap es un alta ahí y aparece
+          aquí sola, sin tocar código ni migrar la base.
+        */}
+        <label className="flex flex-col gap-2 text-sm font-semibold">
+          Ritmo <span className="font-normal opacity-60">(opcional)</span>
+          <select
+            value={genreId}
+            onChange={(e) => setGenreId(e.target.value)}
+            className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
+          >
+            <option value="">Sin especificar</option>
+            {generos.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/*
+          Opcional a propósito: obligar a pegar la letra aquí frenaría la
+          subida de instrumentales y de todo lo que no la tiene. El límite de
+          20.000 caracteres es el mismo que valida el servidor, así que quien
+          se pase se entera escribiendo y no al enviar.
+        */}
+        <label className="flex flex-col gap-2 text-sm font-semibold">
+          Letra <span className="font-normal opacity-60">(opcional)</span>
+          <textarea
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value)}
+            rows={8}
+            maxLength={20000}
+            placeholder="Pega aquí la letra, un verso por línea."
+            className="resize-y rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
+          />
+          <span className="text-xs font-normal opacity-60">
+            {lyrics.trim() ? `${lyrics.length} de 20.000 caracteres` : "Se puede añadir más tarde."}
+          </span>
         </label>
 
         <label className="flex flex-col gap-2 text-sm font-semibold">

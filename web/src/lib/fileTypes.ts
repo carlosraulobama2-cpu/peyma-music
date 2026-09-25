@@ -20,13 +20,20 @@
  */
 
 /** Audio admitido. Debe coincidir con `AUDIO_MIME_TYPES` del backend. */
-export const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.ogg,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/flac";
+export const AUDIO_ACCEPT =
+  ".mp3,.mpeg,.mpga,.wav,.m4a,.ogg,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/flac";
 
 /** Imágenes admitidas: portadas y fotos de perfil. */
 export const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
 
 const BY_EXTENSION: Record<string, string> = {
   mp3: "audio/mpeg",
+  // .mpeg y .mpga son MP3 con otro nombre. Pasa constantemente: una descarga
+  // que el navegador bautiza por el Content-Type acaba en "cancion.mp3.mpeg",
+  // y como Windows registra .mpeg como video/mpeg, el archivo desaparecía del
+  // diálogo y, si llegaba a elegirse, el servidor lo rechazaba.
+  mpeg: "audio/mpeg",
+  mpga: "audio/mpeg",
   wav: "audio/wav",
   m4a: "audio/mp4",
   ogg: "audio/ogg",

@@ -10,7 +10,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User, AccountType } from '../types';
-import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken } from '../services/httpClient';
+import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken, onUnauthorized } from '../services/httpClient';
 import { useLibraryStore } from './libraryStore';
 
 export class AuthError extends Error {}
@@ -38,6 +38,8 @@ interface BackendUser {
   displayName: string;
   avatarUrl: string | null;
   favoriteGenres: string[];
+  /** 'USER' | 'ARTIST' | 'ADMIN' — lo manda el backend en toda respuesta de sesión. */
+  role: string;
   createdAt: string;
 }
 
@@ -93,8 +95,25 @@ function assertRegisterCredentials(password: string, displayName: string): void 
   if (displayName.trim().length < 2) throw new AuthError('Ingresa un nombre de al menos 2 caracteres.');
 }
 
-/** `accountType` no existe en el backend (es un concepto sólo de la app, ver `become-artist.tsx`) — se preserva el que ya tenía la sesión local, si había una. */
+/**
+ * Quién es artista lo dice el servidor, no el teléfono.
+ *
+ * Antes `accountType` era un invento local: el backend mandaba `role` en
+ * cada respuesta de sesión y aquí se descartaba, así que la pestaña de
+ * Estudio dependía de un valor guardado en ESTE dispositivo. Un artista que
+ * reinstalaba la app, o entraba desde otro móvil, volvía como oyente y
+ * perdía el acceso a lo suyo aunque tuviera canciones publicadas.
+ *
+ * Ahora se deriva del rol. Se mantiene el tipo `AccountType` porque es el
+ * vocabulario de la interfaz ("oyente"/"artista"), pero ya no es una fuente
+ * de verdad: es una lectura del rol.
+ *
+ * `previousAccountType` sigue existiendo para un solo caso: alguien que
+ * acaba de darse de alta como artista y cuya sesión todavía no se ha
+ * recargado. Nunca puede DEGRADAR lo que dice el servidor.
+ */
 function mapBackendUser(backendUser: BackendUser, previousAccountType?: AccountType): User {
+  const esArtistaSegunServidor = backendUser.role === 'ARTIST' || backendUser.role === 'ADMIN';
   return {
     id: backendUser.id,
     displayName: backendUser.displayName,
@@ -102,7 +121,7 @@ function mapBackendUser(backendUser: BackendUser, previousAccountType?: AccountT
     avatarUrl: backendUser.avatarUrl ?? undefined,
     favoriteGenres: backendUser.favoriteGenres,
     createdAt: backendUser.createdAt,
-    accountType: previousAccountType ?? 'listener',
+    accountType: esArtistaSegunServidor ? 'artist' : (previousAccountType ?? 'listener'),
   };
 }
 
@@ -301,3 +320,23 @@ export const useAuthStore = create<AuthStore>()(
     },
   ),
 );
+
+/**
+ * Sesión caducada a mitad de uso: se cierra de verdad.
+ *
+ * El token dura 7 días y no se renueva, así que caduca tarde o temprano con
+ * la app abierta. Antes eso sólo se miraba al arrancar (`loadStoredSession`),
+ * y mientras tanto la app seguía pintando al usuario dentro mientras todas
+ * las pantallas fallaban con errores genéricos.
+ *
+ * No se llama a `logout()` sino que se limpia directamente: `logout` avisa
+ * al servidor, y pedirle nada con un token que acaba de rechazar es dar otra
+ * vuelta para nada.
+ */
+onUnauthorized(() => {
+  const { isAuthenticated } = useAuthStore.getState();
+  if (!isAuthenticated) return;
+  void clearAuthToken();
+  useAuthStore.setState({ user: null, isAuthenticated: false, token: null });
+  dropSessionLibrary();
+});

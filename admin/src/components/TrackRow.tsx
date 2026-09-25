@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BadgeCheck, AlertTriangle } from 'lucide-react';
 import { CoverImage } from './CoverImage';
@@ -6,6 +6,7 @@ import { StatusBadge } from './StatusBadge';
 import { ReasonModal } from './ReasonModal';
 import { AudioPreview } from './AudioPreview';
 import type { ModerationTrack } from '../lib/moderation';
+import { fetchGenreOptions, setTrackGenre, type GenreOption } from '../lib/trackGenre';
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -23,6 +24,56 @@ interface TrackRowProps {
 export function TrackRow({ track, isPending, onApprove, onReject }: TrackRowProps) {
   const navigate = useNavigate();
   const [showReasonModal, setShowReasonModal] = useState(false);
+
+  /**
+   * Ritmo editable desde la propia fila.
+   *
+   * Se edita aquí y no en una pantalla aparte porque el momento natural para
+   * etiquetar una canción es mientras se la está escuchando para aprobarla,
+   * no en una segunda visita. `genero` guarda el id elegido; el nombre que
+   * llega del servidor sólo sirve para pintar el valor inicial.
+   */
+  const [generos, setGeneros] = useState<GenreOption[]>([]);
+  const [elegido, setElegido] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGenero, setErrorGenero] = useState(false);
+
+  useEffect(() => {
+    fetchGenreOptions()
+      .then(setGeneros)
+      .catch(() => setGeneros([]));
+  }, []);
+
+  /**
+   * El género que muestra el desplegable.
+   *
+   * El servidor manda el NOMBRE del ritmo, no su id, porque el resto del
+   * panel lo pinta como texto; hay que traducirlo a id para preseleccionar.
+   * Eso se DERIVA de lo que hay, no se copia a estado con un efecto: copiarlo
+   * obligaba a un render extra y, entre medias, el desplegable se pintaba
+   * vacío aunque la pista ya tuviera género.
+   *
+   * `elegido` sólo existe para lo que el usuario acaba de tocar y todavía no
+   * ha confirmado el servidor; mientras sea null manda lo que dice la pista.
+   */
+  const genero = elegido ?? (generos.find((g) => g.name === track.genre)?.id ?? '');
+
+  const cambiarGenero = async (nuevo: string) => {
+    const anterior = genero;
+    setElegido(nuevo);
+    setGuardando(true);
+    setErrorGenero(false);
+    try {
+      await setTrackGenre(track.id, nuevo || null);
+    } catch {
+      // Se revierte a lo que había: dejar el desplegable mostrando un ritmo
+      // que no se llegó a guardar es peor que no haber cambiado nada.
+      setElegido(anterior);
+      setErrorGenero(true);
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   const analysis = track.analysis;
   // Un pico real por encima de 0 dBTP significa que el máster viene
@@ -64,6 +115,27 @@ export function TrackRow({ track, isPending, onApprove, onReject }: TrackRowProp
               {analysis && analysis.bpm > 0 && <span>· {Math.round(analysis.bpm)} BPM</span>}
               {track.album && <span className="truncate">· {track.album.title}</span>}
             </p>
+
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className="text-xs text-muted" htmlFor={`ritmo-${track.id}`}>
+                Ritmo
+              </label>
+              <select
+                id={`ritmo-${track.id}`}
+                value={genero}
+                disabled={guardando}
+                onChange={(e) => void cambiarGenero(e.target.value)}
+                className="rounded border border-white/15 bg-black/25 px-2 py-1 text-xs outline-none focus:border-brand disabled:opacity-50"
+              >
+                <option value="">Sin ritmo</option>
+                {generos.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+              {errorGenero && <span className="text-xs text-danger">No se pudo guardar</span>}
+            </div>
 
             {track.uploadedBy && (
               <p className="mt-0.5 truncate text-xs text-muted">

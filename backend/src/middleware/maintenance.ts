@@ -12,7 +12,9 @@
  *     caducada tiene que poder entrar para llegar al panel. El REGISTRO no
  *     entra en la excepción: dejar que alguien cree una cuenta durante el
  *     mantenimiento sólo sirve para que se choque contra el 503 en la
- *     siguiente pantalla.
+ *     siguiente pantalla. `/api/auth/me` entra con ellas: es como el panel
+ *     restaura una sesión ya iniciada, y sin ella un admin con la sesión
+ *     perfectamente válida aterrizaba en el login en mitad del mantenimiento.
  *  3. `/health` y `/ready` — el balanceador dejaría de enrutar tráfico y
  *     el despliegue se daría por caído, que no es lo que significa "en
  *     mantenimiento".
@@ -27,7 +29,7 @@ import { getBoolean, getString } from '../services/settings';
 import { logger } from '../logger';
 
 /** Rutas que siguen respondiendo durante el mantenimiento. */
-const ALWAYS_OPEN = [/^\/health$/, /^\/ready$/, /^\/api\/admin(\/|$)/, /^\/api\/auth\/(login|google)$/];
+const ALWAYS_OPEN = [/^\/health$/, /^\/ready$/, /^\/api\/admin(\/|$)/, /^\/api\/auth\/(login|google|me)$/];
 
 /** Rutas de reproducción: el audio no se corta. */
 const PLAYBACK_OPEN = [/^\/api\/tracks\/[^/]+\/stream$/, /^\/uploads\//];

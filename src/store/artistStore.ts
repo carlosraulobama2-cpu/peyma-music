@@ -35,6 +35,19 @@ interface ArtistStudioStore {
    * subida hecha con ese id habría sido rechazada por el backend.
    */
   becomeArtist: (input: { id: string; name: string; bio?: string; imageUrl?: string; genres: string[] }) => void;
+  /**
+   * Trae del servidor el perfil de artista de quien ha iniciado sesión y
+   * pisa con él la copia local.
+   *
+   * Hacía falta porque este store se persiste en el teléfono y era la ÚNICA
+   * fuente del perfil dentro de la app: se escribía al crearlo y ya no se
+   * volvía a mirar. `api.getMyArtistProfile()` existía y no lo llamaba
+   * nadie. El resultado es que la copia del teléfono y la del servidor se
+   * separaban —un perfil creado o editado desde la web no llegaba nunca
+   * aquí— y el estudio mostraba un perfil mientras la página pública del
+   * artista mostraba otro. Manda el servidor.
+   */
+  syncFromServer: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<Artist, 'name' | 'bio' | 'imageUrl' | 'genres'>>) => void;
   stopBeingArtist: () => void;
 
@@ -66,6 +79,29 @@ export const useArtistStore = create<ArtistStudioStore>()(
           bio: bio?.trim() || undefined,
         };
         set({ profile, stats: null });
+        void get().refreshStats();
+      },
+
+      syncFromServer: async () => {
+        let artist: Artist | null;
+        try {
+          artist = await api.getMyArtistProfile();
+        } catch {
+          // Sin red se conserva lo que haya en el teléfono: dejar al artista
+          // sin estudio porque el avión no tiene cobertura sería peor que
+          // enseñarle datos de hace un rato.
+          return;
+        }
+
+        if (!artist) {
+          // El servidor dice que esta cuenta no tiene perfil. Si quedaba uno
+          // local es que se borró desde otro sitio, o que el teléfono guarda
+          // el de una sesión anterior.
+          if (get().profile) set({ profile: null, releases: [], stats: null });
+          return;
+        }
+
+        set({ profile: artist });
         void get().refreshStats();
       },
 

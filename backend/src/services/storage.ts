@@ -18,6 +18,7 @@
  * arranque avisa si no lo está (ver `describeStorageBackend`).
  */
 import { randomUUID } from 'node:crypto';
+import { safeExtension, mimeTypeForFilename, extensionForMimeType } from './mediaTypes';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {
@@ -41,7 +42,14 @@ export interface StoredFile {
 }
 
 export interface StorageService {
-  saveFile(uploadId: string, kind: 'audio' | 'cover', buffer: Buffer, originalName: string): Promise<StoredFile>;
+  saveFile(
+    uploadId: string,
+    kind: 'audio' | 'cover',
+    buffer: Buffer,
+    originalName: string,
+    /** Tipo ya validado por quien recibe el archivo. Ver `storedNameFor`. */
+    contentType?: string,
+  ): Promise<StoredFile>;
 
   /**
    * Guarda un archivo derivado de una pista (una variante de calidad).
@@ -69,20 +77,49 @@ export interface StorageService {
   localPathForUrl(url: string): string | null;
 }
 
-function safeExtension(originalName: string): string {
-  const ext = path.extname(originalName).toLowerCase();
-  // Nunca confiar en la extensión del cliente a ciegas para nombrar el
-  // archivo final — sólo se acepta si es alfanumérica corta, si no se
-  // descarta (el `mimetype` ya se validó aparte, en el multer `fileFilter`).
-  return /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '';
+/**
+ * Con qué nombre y qué tipo se guarda el archivo.
+ *
+ * El tipo lo manda quien llama, porque para cuando llega aquí YA se validó:
+ * el `fileFilter` de multer lo aceptó y, si hacía falta, lo corrigió por la
+ * extensión. Volver a deducirlo aquí del nombre del archivo es lo que hacía
+ * que un MP3 llamado ".mpeg" acabara guardado como
+ * `application/octet-stream` — y un `<audio>` con ese tipo no reproduce: la
+ * canción estaba entera en el bucket y no sonaba.
+ *
+ * La extensión final sale del tipo, no del nombre original, así que un
+ * `audio/mpeg` se guarda como `.mp3` aunque llegara como `.mpeg`. De ese
+ * modo el objeto, su `Content-Type` y lo que ffmpeg deduce del nombre dicen
+ * todos lo mismo.
+ */
+function storedNameFor(
+  kind: 'audio' | 'cover',
+  originalName: string,
+  contentType?: string,
+): { filename: string; contentType: string } {
+  const resolved = contentType || mimeTypeForFilename(originalName);
+  const extension = extensionForMimeType(resolved) || safeExtension(originalName);
+  return {
+    filename: `${kind}-${randomUUID()}${extension}`,
+    // Sin tipo reconocible se guarda algo servible igualmente: con un tipo
+    // genérico una portada se descarga en vez de mostrarse y un audio no suena.
+    contentType: resolved || (kind === 'audio' ? 'audio/mpeg' : 'image/jpeg'),
+  };
 }
 
 class LocalDiskStorageService implements StorageService {
-  async saveFile(uploadId: string, kind: 'audio' | 'cover', buffer: Buffer, originalName: string): Promise<StoredFile> {
+  async saveFile(
+    uploadId: string,
+    kind: 'audio' | 'cover',
+    buffer: Buffer,
+    originalName: string,
+    /** Tipo ya validado por quien recibe el archivo. Ver `storedNameFor`. */
+    contentType?: string,
+  ): Promise<StoredFile> {
     const dir = path.join(UPLOADS_ROOT, uploadId);
     await fs.mkdir(dir, { recursive: true });
 
-    const filename = `${kind}-${randomUUID()}${safeExtension(originalName)}`;
+    const { filename } = storedNameFor(kind, originalName, contentType);
     await fs.writeFile(path.join(dir, filename), buffer);
 
     return { url: `${PUBLIC_PREFIX}/${uploadId}/${filename}`, sizeBytes: buffer.byteLength };
@@ -128,10 +165,17 @@ class LocalDiskStorageService implements StorageService {
 }
 
 class ObjectStorageService implements StorageService {
-  async saveFile(uploadId: string, kind: 'audio' | 'cover', buffer: Buffer, originalName: string): Promise<StoredFile> {
-    const extension = safeExtension(originalName);
-    const key = uploadObjectKey(uploadId, `${kind}-${randomUUID()}${extension}`);
-    await putObject(key, buffer, contentTypeFor(extension, kind));
+  async saveFile(
+    uploadId: string,
+    kind: 'audio' | 'cover',
+    buffer: Buffer,
+    originalName: string,
+    /** Tipo ya validado por quien recibe el archivo. Ver `storedNameFor`. */
+    contentType?: string,
+  ): Promise<StoredFile> {
+    const { filename, contentType: tipo } = storedNameFor(kind, originalName, contentType);
+    const key = uploadObjectKey(uploadId, filename);
+    await putObject(key, buffer, tipo);
     return { url: publicUrlFor(key), sizeBytes: buffer.byteLength };
   }
 
@@ -156,31 +200,6 @@ class ObjectStorageService implements StorageService {
   localPathForUrl(): string | null {
     return null;
   }
-}
-
-/**
- * Tipo de contenido a partir de la extensión ya saneada.
- *
- * Importa guardarlo bien: es lo que el navegador recibe al pedir el archivo.
- * Con un tipo genérico, `<audio>` puede negarse a reproducir y una portada se
- * descarga en vez de mostrarse.
- */
-function contentTypeFor(extension: string, kind: 'audio' | 'cover'): string {
-  const byExtension: Record<string, string> = {
-    '.mp3': 'audio/mpeg',
-    '.m4a': 'audio/mp4',
-    '.aac': 'audio/aac',
-    '.ogg': 'audio/ogg',
-    '.opus': 'audio/opus',
-    '.wav': 'audio/wav',
-    '.flac': 'audio/flac',
-    '.aiff': 'audio/aiff',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.webp': 'image/webp',
-  };
-  return byExtension[extension] ?? (kind === 'audio' ? 'application/octet-stream' : 'image/jpeg');
 }
 
 const usingObjectStorage = isObjectStorageEnabled();

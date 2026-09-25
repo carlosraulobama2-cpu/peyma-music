@@ -17,9 +17,22 @@ interface ArtistsResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-export function fetchArtists(search = ''): Promise<ArtistsResponse> {
+export async function fetchArtists(search = ''): Promise<ArtistsResponse> {
   const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-  return http.get<ArtistsResponse>(`/admin/artists?limit=100${q}`);
+
+  // Todas las páginas, no sólo la primera. La respuesta ya traía `total` y
+  // `totalPages` y se descartaban: el desplegable de "Subir canción" se
+  // quedaba en 100 artistas sin decirlo, y el 101 no era elegible.
+  const primera = await http.get<ArtistsResponse>(`/admin/artists?limit=100&page=1${q}`);
+  const artists = [...primera.artists];
+
+  for (let page = 2; page <= primera.pagination.totalPages; page += 1) {
+    const siguiente = await http.get<ArtistsResponse>(`/admin/artists?limit=100&page=${page}${q}`);
+    if (siguiente.artists.length === 0) break;
+    artists.push(...siguiente.artists);
+  }
+
+  return { artists, pagination: { ...primera.pagination, page: 1, limit: artists.length } };
 }
 
 export function setArtistBlocked(artistId: string, isBlocked: boolean): Promise<{ artist: AdminArtist }> {
