@@ -182,6 +182,11 @@ export const api = {
   },
 
   // Explorar por género (etiqueta libre del artista — ver comentario en mappers/schema del backend)
+  /** Banner informativo configurable desde el panel (Ajustes → Anuncio) — no bloquea nada, a diferencia del modo mantenimiento. */
+  async getAnnouncement({ signal }: ApiOptions = {}): Promise<{ enabled: boolean; message: string }> {
+    return http.get<{ enabled: boolean; message: string }>('/config/announcement', { signal, skipAuth: true });
+  },
+
   async getGenres({ signal }: ApiOptions = {}): Promise<string[]> {
     const { items } = await paginatedGet<BackendArtist>('/artists', 'artists', { limit: 100 }, { signal });
     return Array.from(new Set(items.flatMap((a) => a.genres))).sort();

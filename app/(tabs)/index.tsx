@@ -17,6 +17,7 @@ import {
   GenreCarousel,
 } from '../../src/components/home';
 import { LocationConsentCard } from '../../src/components/LocationConsentCard';
+import { AnnouncementBanner } from '../../src/components/AnnouncementBanner';
 import { EmptyState } from '../../src/components';
 import { GENRES } from '../../src/types/music';
 import { useTheme, useThemedStyles, spacing, typography, radius, layout, type Theme } from '../../src/theme';
@@ -120,6 +121,7 @@ export default function HomeScreen() {
         <Text style={styles.trendingButtonText}>Top Charts</Text>
       </Pressable>
 
+      <AnnouncementBanner />
       <LocationConsentCard />
 
       {/*
