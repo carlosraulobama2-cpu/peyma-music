@@ -13,6 +13,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
+import { getRankedArtists } from './artistRanking';
 
 /** Misma ventana que oyentes mensuales y trending — un solo criterio en toda la plataforma. */
 const ROLLING_WINDOW_DAYS = 28;
@@ -154,20 +155,10 @@ async function resolveTopAlbums(limit: number) {
 }
 
 async function resolveTopArtists(limit: number) {
-  // Por OYENTES distintos, no por reproducciones: si no, un solo usuario
-  // dejando una canción en bucle pondría a su artista favorito arriba.
-  const rows = await prisma.$queryRaw<{ artistId: string }[]>`
-    SELECT s."artistId", COUNT(DISTINCT s."userId") AS listeners
-      FROM "StreamLog" s
-      JOIN "Artist" a ON a."id" = s."artistId"
-     WHERE s."playedAt" >= ${windowStart()}
-       AND a."isBlocked" = false
-     GROUP BY s."artistId"
-    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
-     ORDER BY listeners DESC
-     LIMIT ${limit}
-  `;
-  const ids = rows.map((row) => row.artistId);
+  // Ranking compuesto (oyentes + reproducciones + seguidores) — ver
+  // artistRanking.ts para el porqué de los pesos.
+  const ranked = await getRankedArtists(windowStart(), limit, MIN_LISTENERS_TO_FEATURE);
+  const ids = ranked.map((row) => row.artistId);
   if (ids.length === 0) return [];
   const artists = await prisma.artist.findMany({ where: { id: { in: ids } }, select: ARTIST_CARD_SELECT });
   return sortByIdOrder(artists, ids);

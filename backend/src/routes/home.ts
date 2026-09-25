@@ -22,6 +22,7 @@ import { optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
 import { getActivePromotions } from '../services/promotions';
 import { getPublishedSections, MIN_LISTENERS_TO_FEATURE } from '../services/editorial';
 import { getTrendingTracks, getPlayCounts } from '../services/audienceStats';
+import { getRankedArtists } from '../services/artistRanking';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ const PUBLIC_WHERE: Prisma.TrackWhereInput = {
 router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id ?? null;
 
-  const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, topArtists] = await Promise.all([
+  const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, rankedArtists] = await Promise.all([
     getActivePromotions(),
     getPublishedSections(),
     // Piso de oyentes distintos: sin esto, algo recién subido aparecía como
@@ -84,24 +85,13 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
         })
       : [],
     /**
-     * Artistas populares, para la fila de avatares redondos.
-     *
-     * Se ordenan por OYENTES distintos en la ventana, no por número de
-     * reproducciones: si no, un solo usuario dejando una canción en bucle
-     * pondría a su artista favorito arriba del todo.
+     * Artistas populares, para la fila de avatares redondos — el mismo
+     * ranking compuesto (oyentes + reproducciones + seguidores) que decide
+     * quién entra a TOP_ARTISTS en las secciones editoriales, para que
+     * "quién es popular" no dependa de en qué fila de la portada se mire.
+     * Ver services/artistRanking.ts.
      */
-    prisma.$queryRaw<{ id: string; name: string; imageUrl: string; isVerified: boolean; listeners: bigint }[]>`
-      SELECT a."id", a."name", a."imageUrl", a."isVerified",
-             COUNT(DISTINCT s."userId") AS listeners
-        FROM "Artist" a
-        LEFT JOIN "StreamLog" s
-               ON s."artistId" = a."id"
-              AND s."playedAt" >= NOW() - INTERVAL '28 days'
-       WHERE a."isBlocked" = false
-       GROUP BY a."id", a."name", a."imageUrl", a."isVerified"
-       ORDER BY listeners DESC, a."name" ASC
-       LIMIT 12
-    `,
+    getRankedArtists(new Date(Date.now() - 28 * 24 * 60 * 60 * 1000), 12, MIN_LISTENERS_TO_FEATURE),
   ]);
 
   const recentlyPlayed = recentRows.map((row) => row.track);
@@ -125,6 +115,21 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
     ...track,
     playCount: cardPlayCounts.get(track.id) ?? 0,
   });
+
+  // `getRankedArtists` sólo da ids y métricas; el nombre/foto se resuelve
+  // acá para no acoplar el ranking (compartido con editorial.ts) a la forma
+  // exacta que necesita cada consumidor.
+  const artistDetails = await prisma.artist.findMany({
+    where: { id: { in: rankedArtists.map((a) => a.artistId) } },
+    select: { id: true, name: true, imageUrl: true, isVerified: true },
+  });
+  const artistDetailsById = new Map(artistDetails.map((a) => [a.id, a]));
+  const topArtists = rankedArtists
+    .map((ranked) => {
+      const details = artistDetailsById.get(ranked.artistId);
+      return details ? { ...details, listeners: ranked.listeners } : null;
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null);
 
   /**
    * Accesos rápidos: las playlists del usuario y, si no llena los 8 huecos,
@@ -179,17 +184,12 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
       { key: 'new', title: 'Novedades de la semana', tracks: newReleases.map(withPlays) },
     ].filter((row) => row.tracks.length > 0),
     /**
-     * Artistas populares. Se envían aunque no tengan reproducciones
-     * (LEFT JOIN): en un catálogo nuevo, una fila vacía se vería como un
-     * error, y mostrar los artistas que hay es más útil que no mostrar nada.
+     * Artistas populares, por el ranking compuesto de artistRanking.ts.
+     * Puede venir vacía en un catálogo muy nuevo (nadie llega todavía al
+     * piso de oyentes) — es preferible a rellenar con artistas sin
+     * actividad real sólo para que la fila no se vea vacía.
      */
-    artists: topArtists.map((row) => ({
-      id: row.id,
-      name: row.name,
-      imageUrl: row.imageUrl,
-      isVerified: row.isVerified,
-      listeners: Number(row.listeners),
-    })),
+    artists: topArtists,
     /** Secciones que definió el curador en el panel. */
     sections,
     /** Para que el cliente sepa cuánto puede reutilizar esta respuesta. */
