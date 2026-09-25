@@ -20,7 +20,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
 import { getActivePromotions } from '../services/promotions';
-import { getPublishedSections } from '../services/editorial';
+import { getPublishedSections, MIN_LISTENERS_TO_FEATURE } from '../services/editorial';
 import { getTrendingTracks, getPlayCounts } from '../services/audienceStats';
 
 const router = Router();
@@ -55,7 +55,9 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
   const [promotions, sections, trending, newReleases, recentRows, quickAccessPlaylists, topArtists] = await Promise.all([
     getActivePromotions(),
     getPublishedSections(),
-    getTrendingTracks(ROW_SIZE, 28),
+    // Piso de oyentes distintos: sin esto, algo recién subido aparecía como
+    // "tendencia" en la portada con la propia reproducción de quien lo subió.
+    getTrendingTracks(ROW_SIZE, 28, MIN_LISTENERS_TO_FEATURE),
     prisma.track.findMany({
       where: PUBLIC_WHERE,
       orderBy: { createdAt: 'desc' },

@@ -16,6 +16,13 @@ import { prisma } from '../prismaClient';
 
 /** Misma ventana que oyentes mensuales y trending — un solo criterio en toda la plataforma. */
 const ROLLING_WINDOW_DAYS = 28;
+/**
+ * Bajo este número de OYENTES DISTINTOS en la ventana, una pista o álbum no
+ * cuenta como "top" para las secciones automáticas — sin este piso, algo
+ * recién subido con una sola reproducción (la del propio artista) podía
+ * ganar "Lo más escuchado" o "Mejores álbumes" el mismo día que se publica.
+ */
+export const MIN_LISTENERS_TO_FEATURE = 5;
 
 /** Un artista bloqueado y una pista no aprobada no salen en ninguna sección. */
 const PUBLIC_TRACK_WHERE: Prisma.TrackWhereInput = {
@@ -68,15 +75,24 @@ function windowStart(): Date {
   return new Date(Date.now() - ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 }
 
-/** IDs más reproducidos en la ventana, en orden. */
+/**
+ * IDs más reproducidos en la ventana, en orden — sólo entre las que
+ * escuchó al menos `MIN_LISTENERS_TO_FEATURE` personas distintas.
+ *
+ * SQL crudo y no `groupBy`: Prisma no puede expresar `COUNT(DISTINCT
+ * userId)` ni un `HAVING` sobre eso, y las dos cosas hacen falta para el
+ * piso de oyentes distintos.
+ */
 async function topTrackIds(limit: number): Promise<string[]> {
-  const rows = await prisma.streamLog.groupBy({
-    by: ['trackId'],
-    where: { playedAt: { gte: windowStart() } },
-    _count: { _all: true },
-    orderBy: { _count: { trackId: 'desc' } },
-    take: limit,
-  });
+  const rows = await prisma.$queryRaw<{ trackId: string }[]>`
+    SELECT s."trackId"
+      FROM "StreamLog" s
+     WHERE s."playedAt" >= ${windowStart()}
+     GROUP BY s."trackId"
+    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
+     ORDER BY COUNT(*) DESC
+     LIMIT ${limit}
+  `;
   return rows.map((row) => row.trackId);
 }
 
@@ -122,7 +138,12 @@ async function resolveTopAlbums(limit: number) {
      WHERE s."playedAt" >= ${windowStart()}
        AND t."status" = 'APPROVED'
        AND a."isBlocked" = false
+       -- Un sencillo es un álbum autogenerado de una sola pista (ver
+       -- routes/uploads.ts): no es un ÁLBUM para efectos de "Mejores
+       -- álbumes", aunque su única canción esté sonando mucho.
+       AND (SELECT COUNT(*) FROM "Track" t2 WHERE t2."albumId" = t."albumId") > 1
      GROUP BY t."albumId"
+    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
      ORDER BY streams DESC
      LIMIT ${limit}
   `;
@@ -142,6 +163,7 @@ async function resolveTopArtists(limit: number) {
      WHERE s."playedAt" >= ${windowStart()}
        AND a."isBlocked" = false
      GROUP BY s."artistId"
+    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
      ORDER BY listeners DESC
      LIMIT ${limit}
   `;

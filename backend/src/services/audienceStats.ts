@@ -171,8 +171,16 @@ export interface TrendingRow {
  * El primer elemento es "el número 1 actual". Se devuelve la lista completa
  * y no sólo el primero porque el panel muestra las dos cosas con la misma
  * consulta, y pedirlas por separado duplicaría el trabajo de la base.
+ *
+ * `minListeners` queda en `0` (sin piso) por defecto — lo que el panel
+ * necesita es ver TODO lo que pasa, incluida una canción con una sola
+ * reproducción, para detectarlo temprano. Quien pide un piso es
+ * `routes/home.ts`, que alimenta con esto la fila "Tendencias" de la
+ * portada pública: ahí sí hace falta, para que algo recién subido no
+ * aparezca como tendencia con la reproducción del propio artista.
  */
-export async function getTrendingTracks(limit = 20, days = 7): Promise<TrendingRow[]> {
+export async function getTrendingTracks(limit = 20, days = 7, minListeners = 0): Promise<TrendingRow[]> {
+  const havingClause = minListeners > 0 ? `HAVING COUNT(DISTINCT s."userId") >= $3` : '';
   const rows = await prisma.$queryRawUnsafe<
     {
       trackId: string;
@@ -213,11 +221,13 @@ export async function getTrendingTracks(limit = 20, days = 7): Promise<TrendingR
        AND a."isBlocked" = false
      GROUP BY s."trackId", t."title", t."coverUrl", t."duration", t."genre", an."bpm",
               a."id", a."name", a."imageUrl", a."isVerified"
+     ${havingClause}
      ORDER BY streams DESC, listeners DESC
      LIMIT $2
     `,
     windowStart(days),
     limit,
+    ...(minListeners > 0 ? [minListeners] : []),
   );
 
   return rows.map((row) => ({
