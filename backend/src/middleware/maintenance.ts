@@ -27,7 +27,16 @@ import { getBoolean, getString } from '../services/settings';
 import { logger } from '../logger';
 
 /** Rutas que siguen respondiendo durante el mantenimiento. */
-const ALWAYS_OPEN = [/^\/health$/, /^\/ready$/, /^\/api\/admin(\/|$)/, /^\/api\/auth\/(login|google)$/];
+const ALWAYS_OPEN = [
+  /^\/health$/,
+  /^\/ready$/,
+  /^\/api\/admin(\/|$)/,
+  /^\/api\/auth\/(login|google)$/,
+  // El anuncio no es mantenimiento: si el cliente lo pidiera y chocara con
+  // el 503, la pantalla de mantenimiento tapa igual el banner, pero el
+  // aviso quedaría marcado como "no se pudo cargar" en la consola sin razón.
+  /^\/api\/config\/announcement$/,
+];
 
 /** Rutas de reproducción: el audio no se corta. */
 const PLAYBACK_OPEN = [/^\/api\/tracks\/[^/]+\/stream$/, /^\/uploads\//];

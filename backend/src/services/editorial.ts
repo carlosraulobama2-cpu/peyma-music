@@ -25,6 +25,29 @@ const ROLLING_WINDOW_DAYS = 28;
  */
 export const MIN_LISTENERS_TO_FEATURE = 5;
 
+/**
+ * Ventana de programación: sin `publishAt`/`unpublishAt` (el caso normal,
+ * de siempre) no filtra nada — sólo entra en juego cuando el curador puso
+ * una fecha. `isPublished` sigue siendo obligatorio aparte: esto NO
+ * reemplaza esa casilla, sólo acota cuándo dentro de "publicada" cuenta
+ * como visible ahora mismo.
+ */
+/**
+ * Función y no una constante: `new Date()` tiene que ser el momento de
+ * CADA consulta, no el del arranque del proceso — con una constante, un
+ * servidor que lleva días corriendo compararía siempre contra la hora en
+ * que arrancó.
+ */
+function inScheduleWindow(): Prisma.EditorialSectionWhereInput {
+  const now = new Date();
+  return {
+    AND: [
+      { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+      { OR: [{ unpublishAt: null }, { unpublishAt: { gt: now } }] },
+    ],
+  };
+}
+
 /** Un artista bloqueado y una pista no aprobada no salen en ninguna sección. */
 const PUBLIC_TRACK_WHERE: Prisma.TrackWhereInput = {
   status: 'APPROVED',
@@ -222,7 +245,7 @@ async function resolveOne(section: SectionRow): Promise<ResolvedSection> {
  */
 export async function getPublishedSections(): Promise<ResolvedSection[]> {
   const sections = await prisma.editorialSection.findMany({
-    where: { isPublished: true },
+    where: { isPublished: true, ...inScheduleWindow() },
     orderBy: { position: 'asc' },
     include: { items: true },
   });
@@ -244,7 +267,7 @@ export async function getPublishedSections(): Promise<ResolvedSection[]> {
  */
 export async function getPublishedSectionBySlug(slug: string): Promise<ResolvedSection | null> {
   const section = await prisma.editorialSection.findFirst({
-    where: { slug, isPublished: true },
+    where: { slug, isPublished: true, ...inScheduleWindow() },
     include: { items: true },
   });
   return section ? resolveOne(section) : null;

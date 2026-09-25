@@ -28,8 +28,17 @@ export const comparePassword = async (password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 };
 
-export const generateToken = (payload: JwtPayload): string => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+/**
+ * `expiresIn` es opcional — por defecto la sesión normal de 7 días. Lo pasa
+ * distinto el token de "entrar como" de soporte (routes/admin.ts): mucho
+ * más corto a propósito, porque es para una revisión puntual y no para
+ * quedar logueado como otra persona indefinidamente.
+ */
+export const generateToken = (
+  payload: JwtPayload,
+  expiresIn: jwt.SignOptions['expiresIn'] = JWT_EXPIRES_IN,
+): string => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn });
 };
 
 export const verifyToken = (token: string): JwtPayload => {

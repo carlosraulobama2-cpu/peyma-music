@@ -7,7 +7,7 @@
  * publicar, que sólo puede operar un usuario con `role: ADMIN`.
  */
 import { Router, type Response } from 'express';
-import type { AudioQuality, JobKind, ReportStatus } from '@prisma/client';
+import type { Prisma, AudioQuality, JobKind, ReportStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { authMiddleware, authFromHeaderOrQuery, requireRole, type AuthRequest } from '../middleware/auth';
 import {
@@ -36,6 +36,8 @@ import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { enqueue, retryJob } from '../services/jobQueue';
 import { QUALITY_PROFILES } from '../services/transcode';
 import { isFfmpegAvailable } from '../services/ffmpeg';
+import { isObjectStorageEnabled } from '../services/objectStorage';
+import { generateToken } from '../utils/auth';
 import { pipeAudio } from './stream';
 import { record } from '../services/auditLog';
 import { invalidateTrackAccess, invalidateAllTrackAccess } from '../services/trackAccess';
@@ -50,8 +52,9 @@ import {
   getPlayCounts,
 } from '../services/audienceStats';
 import { getArtistStats } from '../services/artistStats';
+import { getRankedArtists } from '../services/artistRanking';
 import { inspectUrl } from '../services/trackImport';
-import { listSettings, setSetting, isKnownSetting, validateSettingValue } from '../services/settings';
+import { listSettings, setSetting, isKnownSetting, validateSettingValue, getNumber } from '../services/settings';
 import { slugify } from '../utils/slug';
 import {
   approvePromotion,
@@ -489,6 +492,7 @@ router.get('/metrics', async (_req: AuthRequest, res: Response) => {
     liveListeners,
     failedJobs,
     queuedJobs,
+    openReports,
     dailySeries,
     topGenres,
   ] = await Promise.all([
@@ -508,6 +512,7 @@ router.get('/metrics', async (_req: AuthRequest, res: Response) => {
       .then((rows) => rows.length),
     prisma.processingJob.count({ where: { status: 'FAILED' } }),
     prisma.processingJob.count({ where: { status: { in: ['QUEUED', 'RUNNING'] } } }),
+    prisma.trackReport.count({ where: { status: 'OPEN' } }),
     // Serie diaria para el gráfico de 28 días. Se agrupa en SQL y no en JS:
     // traer una fila por reproducción para contarlas acá no escala.
     prisma.$queryRaw<{ day: Date; streams: bigint }[]>`
@@ -533,12 +538,23 @@ router.get('/metrics', async (_req: AuthRequest, res: Response) => {
   // de la plataforma es algo de esta semana, no del último mes.
   const [top1] = await getTrendingTracks(1, 7);
 
+  const [moderationThreshold, reportsThreshold] = await Promise.all([
+    getNumber('alerts.moderationQueueThreshold'),
+    getNumber('alerts.reportsQueueThreshold'),
+  ]);
+
   res.json({
     windowDays: ROLLING_WINDOW_DAYS,
     top1: top1 ?? null,
-    catalog: { totalTracks, pendingReview, totalArtists, blockedArtists, totalUsers, verifiedArtists },
+    catalog: { totalTracks, pendingReview, totalArtists, blockedArtists, totalUsers, verifiedArtists, openReports },
     audience: { streams28d, listeners28d, liveListeners },
     jobs: { failed: failedJobs, active: queuedJobs },
+    /**
+     * Umbrales configurables (Ajustes → Alertas): por debajo, la cola
+     * pendiente se muestra en tono normal; al llegar o pasar el umbral, el
+     * panel la resalta como crítica en vez de solo "hay algo pendiente".
+     */
+    alerts: { moderationThreshold, reportsThreshold },
     // `COUNT(*)` en Postgres vuelve como BIGINT y `JSON.stringify` no sabe
     // serializar BigInt: lanza. Se convierte acá, no en el cliente.
     dailyStreams: dailySeries.map((row) => ({
@@ -645,6 +661,43 @@ router.post('/jobs/:id/retry', async (req: AuthRequest, res: Response) => {
  * ------------------------------------------------------------------ */
 
 /** Otorga o retira el check de verificación. */
+/**
+ * Candidatos a verificación: artistas SIN el check azul, ordenados por el
+ * mismo ranking compuesto que decide quién va en primera fila (oyentes +
+ * reproducciones + seguidores — ver services/artistRanking.ts). No es una
+ * cola de solicitudes: es "a quién le tocaría el check si alguien se
+ * pusiera a revisar ahora", derivado de actividad real, no de un formulario
+ * que el artista tiene que rellenar.
+ */
+router.get('/artists/verification-candidates', async (req: AuthRequest, res: Response) => {
+  const { limit } = querySchema.parse(req.query);
+
+  // Se pide de más porque algunos ya estarán verificados y se filtran
+  // después — pedir sólo `limit` podría devolver menos de los que hacen falta.
+  const ranked = await getRankedArtists(
+    new Date(Date.now() - ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+    limit * 3,
+    1,
+  );
+
+  const artists = await prisma.artist.findMany({
+    where: { id: { in: ranked.map((r) => r.artistId) }, isVerified: false, isBlocked: false },
+    select: { id: true, name: true, imageUrl: true, _count: { select: { followers: true, tracks: true } } },
+  });
+  const byId = new Map(artists.map((a) => [a.id, a]));
+
+  const candidates = ranked
+    .map((r) => {
+      const artist = byId.get(r.artistId);
+      if (!artist) return null;
+      return { ...artist, listeners: r.listeners, streams: r.streams, score: r.score };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null)
+    .slice(0, limit);
+
+  res.json({ candidates });
+});
+
 router.patch('/artists/:id/verify', async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);
   const { isVerified } = verifyArtistSchema.parse(req.body);
@@ -1688,17 +1741,216 @@ router.patch('/settings', async (req: AuthRequest, res: Response) => {
   res.json({ settings: await listSettings() });
 });
 
-/** Bitácora de auditoría — sólo lectura, no hay ruta que escriba ni borre. */
+/**
+ * Bitácora de auditoría — sólo lectura, no hay ruta que escriba ni borre.
+ *
+ * Los filtros son todos opcionales y se combinan con AND: sin ninguno,
+ * devuelve todo paginado (lo que ya usaba el cajón lateral). `action` y
+ * `targetType` son igualdad exacta (son valores cerrados que pone el propio
+ * código, no texto libre); `actorEmail` es "contiene", porque quien busca
+ * rara vez recuerda el correo completo.
+ */
 router.get('/audit', async (req: AuthRequest, res: Response) => {
   const { page, limit } = querySchema.parse(req.query);
   const skip = (page - 1) * limit;
+  const { action, targetType, actorEmail, from, to } = req.query;
 
-  const [entries, total] = await Promise.all([
-    prisma.auditLog.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
-    prisma.auditLog.count(),
+  const where: Prisma.AuditLogWhereInput = {
+    ...(typeof action === 'string' && action ? { action } : {}),
+    ...(typeof targetType === 'string' && targetType ? { targetType } : {}),
+    ...(typeof actorEmail === 'string' && actorEmail ? { actorEmail: { contains: actorEmail, mode: 'insensitive' } } : {}),
+    ...((typeof from === 'string' && from) || (typeof to === 'string' && to)
+      ? {
+          createdAt: {
+            ...(typeof from === 'string' && from ? { gte: new Date(from) } : {}),
+            ...(typeof to === 'string' && to ? { lte: new Date(to) } : {}),
+          },
+        }
+      : {}),
+  };
+
+  const [entries, total, actions] = await Promise.all([
+    prisma.auditLog.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.auditLog.count({ where }),
+    // Para el filtro desplegable: qué acciones existen DE VERDAD en la
+    // bitácora, no una lista fija en el código que se desactualiza cada vez
+    // que se añade un `record(...)` nuevo en algún lado.
+    prisma.auditLog.findMany({ distinct: ['action'], select: { action: true }, orderBy: { action: 'asc' } }),
   ]);
 
-  res.json({ entries, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  res.json({
+    entries,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    availableActions: actions.map((a) => a.action),
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Estado del sistema — lectura pura, nada que este endpoint pueda romper.
+ * ------------------------------------------------------------------ */
+
+router.get('/system/status', async (_req: AuthRequest, res: Response) => {
+  const dbStart = Date.now();
+  let dbOk = true;
+  let dbLatencyMs: number | null = null;
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    dbLatencyMs = Date.now() - dbStart;
+  } catch {
+    dbOk = false;
+  }
+
+  const [failedJobs24h, stuckUploads, oldestQueuedJob] = await Promise.all([
+    prisma.processingJob.count({
+      where: { status: 'FAILED', updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    }),
+    // Un borrador que lleva más de un día sin avanzar de ANALYZING es un
+    // trabajo que se perdió, no alguien tomándose su tiempo para publicar.
+    prisma.trackUpload.count({
+      where: { status: 'ANALYZING', updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    }),
+    prisma.processingJob.findFirst({
+      where: { status: 'QUEUED' },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  res.json({
+    checkedAt: new Date().toISOString(),
+    database: { ok: dbOk, latencyMs: dbLatencyMs },
+    objectStorage: { enabled: isObjectStorageEnabled() },
+    ffmpeg: { available: await isFfmpegAvailable() },
+    jobs: {
+      failedLast24h: failedJobs24h,
+      oldestQueuedAt: oldestQueuedJob?.createdAt.toISOString() ?? null,
+    },
+    uploads: { stuckAnalyzing: stuckUploads },
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Exportación del catálogo — todo, no sólo lo que hay cargado en pantalla.
+ * ------------------------------------------------------------------ */
+
+/** Techo duro: un `findMany` sin límite contra un catálogo grande podría tumbar la consulta. */
+const EXPORT_HARD_CAP = 20_000;
+
+router.get('/export/tracks', async (req: AuthRequest, res: Response) => {
+  const tracks = await prisma.track.findMany({
+    take: EXPORT_HARD_CAP,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      genre: true,
+      duration: true,
+      isExplicit: true,
+      isBlocked: true,
+      createdAt: true,
+      artist: { select: { name: true } },
+      album: { select: { title: true } },
+    },
+  });
+
+  await record(req, { action: 'catalog.export', targetType: 'tracks', metadata: { count: tracks.length } });
+  res.json({
+    rows: tracks.map((t) => ({
+      id: t.id,
+      titulo: t.title,
+      artista: t.artist.name,
+      album: t.album?.title ?? '',
+      estado: t.status,
+      genero: t.genre ?? '',
+      duracionSegundos: t.duration,
+      explicita: t.isExplicit,
+      bloqueada: t.isBlocked,
+      creada: t.createdAt.toISOString(),
+    })),
+  });
+});
+
+router.get('/export/artists', async (req: AuthRequest, res: Response) => {
+  const artists = await prisma.artist.findMany({
+    take: EXPORT_HARD_CAP,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      isVerified: true,
+      isBlocked: true,
+      createdAt: true,
+      owner: { select: { email: true } },
+      _count: { select: { tracks: true, albums: true, followers: true } },
+    },
+  });
+
+  await record(req, { action: 'catalog.export', targetType: 'artists', metadata: { count: artists.length } });
+  res.json({
+    rows: artists.map((a) => ({
+      id: a.id,
+      nombre: a.name,
+      correoDueño: a.owner?.email ?? '',
+      verificado: a.isVerified,
+      bloqueado: a.isBlocked,
+      canciones: a._count.tracks,
+      albumes: a._count.albums,
+      seguidores: a._count.followers,
+      creado: a.createdAt.toISOString(),
+    })),
+  });
+});
+
+router.get('/export/users', async (req: AuthRequest, res: Response) => {
+  const users = await prisma.user.findMany({
+    take: EXPORT_HARD_CAP,
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, email: true, displayName: true, role: true, createdAt: true, googleId: true },
+  });
+
+  await record(req, { action: 'catalog.export', targetType: 'users', metadata: { count: users.length } });
+  res.json({
+    rows: users.map((u) => ({
+      id: u.id,
+      correo: u.email,
+      nombre: u.displayName,
+      rol: u.role,
+      metodo: u.googleId ? 'Google' : 'Correo y clave',
+      creado: u.createdAt.toISOString(),
+    })),
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Impersonar usuario — para soporte: ver la app exactamente como la ve
+ * alguien, sin pedirle capturas de pantalla.
+ * ------------------------------------------------------------------ */
+
+router.post('/users/:id/impersonate', async (req: AuthRequest, res: Response) => {
+  const { id } = idParamSchema.parse(req.params);
+
+  const target = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true, role: true } });
+  if (!target) throw new NotFoundError('Usuario');
+  // Un admin no puede quedar "suplantado": abriría la puerta a escalar
+  // privilegios entrando como otro admin y actuando con su identidad.
+  if (target.role === 'ADMIN') {
+    throw new BadRequestError('No se puede entrar como otra cuenta de administrador.');
+  }
+
+  // Vida corta y a propósito mucho más breve que una sesión normal (7 días):
+  // es para una revisión puntual de soporte, no para quedarse logueado como
+  // ese usuario indefinidamente.
+  const token = generateToken({ userId: target.id, email: target.email }, '1h');
+
+  await record(req, {
+    action: 'user.impersonate',
+    targetType: 'user',
+    targetId: target.id,
+    targetLabel: target.email,
+  });
+
+  res.json({ token, user: { id: target.id, email: target.email }, expiresInSeconds: 3600 });
 });
 
 export default router;

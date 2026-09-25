@@ -456,6 +456,15 @@ model EditorialSection {
   /// Cuántas piezas mostrar en las secciones automáticas.
   maxItems  Int             @default(10)
 
+  /// Ventana de publicación programada — AMBAS opcionales y AMBAS aparte de
+  /// `isPublished`, no en su lugar: `isPublished` sigue siendo "el curador
+  /// terminó de armar esto y quiere que salga"; estas dos fechas acotan
+  /// CUÁNDO, dentro de eso. Una sección publicada con `publishAt` futuro no
+  /// sale todavía; una con `unpublishAt` pasado deja de salir sola, sin que
+  /// nadie tenga que entrar a desmarcar la casilla el día exacto.
+  publishAt   DateTime?
+  unpublishAt DateTime?
+
   items     EditorialItem[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt

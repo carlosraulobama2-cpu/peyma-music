@@ -348,6 +348,9 @@ export const editorialSectionSchema = z.object({
   position: z.number().int().min(0).max(999).default(0),
   isPublished: z.boolean().default(false),
   maxItems: z.number().int().min(1).max(50).default(10),
+  /** Ventana de publicación programada — ambas opcionales, ver el comentario en schema.prisma. */
+  publishAt: z.coerce.date().nullish(),
+  unpublishAt: z.coerce.date().nullish(),
 });
 
 /**
