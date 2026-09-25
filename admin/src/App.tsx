@@ -4,6 +4,7 @@ import { RequireAdminRoute } from './routes/RequireAdminRoute';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ModerationDashboardPage } from './pages/ModerationDashboardPage';
+import { ReleasesPage } from './pages/ReleasesPage';
 import { ArtistsPage } from './pages/ArtistsPage';
 import { ArtistDetailPage } from './pages/ArtistDetailPage';
 import { UploadPage } from './pages/UploadPage';
@@ -31,6 +32,7 @@ import { ExportPage } from './pages/ExportPage';
 const PROTECTED_ROUTES = [
   { path: '/dashboard', element: <DashboardPage /> },
   { path: '/moderation', element: <ModerationDashboardPage /> },
+  { path: '/releases', element: <ReleasesPage /> },
   { path: '/reports', element: <ReportsPage /> },
   { path: '/artists', element: <ArtistsPage /> },
   // Ficha individual. No va en NAV_SECTIONS: se llega pulsando un artista,

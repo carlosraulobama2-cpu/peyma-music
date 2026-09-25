@@ -16,6 +16,36 @@ export const STATUS_LABEL: Record<TrackReviewStatus, string> = {
   REJECTED: 'Rechazado',
 };
 
+/** Espejo de `CreditRole` en `backend/prisma/schema.prisma`. */
+export type CreditRole =
+  | 'MAIN_ARTIST'
+  | 'FEATURED_ARTIST'
+  | 'REMIXER'
+  | 'PRODUCER'
+  | 'COMPOSER'
+  | 'WRITER'
+  | 'MIX_ENGINEER'
+  | 'MASTERING_ENGINEER';
+
+export const CREDIT_ROLE_LABEL: Record<CreditRole, string> = {
+  MAIN_ARTIST: 'Artista principal',
+  FEATURED_ARTIST: 'Artista invitado',
+  REMIXER: 'Remixer',
+  PRODUCER: 'Productor',
+  COMPOSER: 'Compositor',
+  WRITER: 'Letrista',
+  MIX_ENGINEER: 'Mezcla',
+  MASTERING_ENGINEER: 'Masterización',
+};
+
+export interface TrackCredit {
+  id: string;
+  role: CreditRole;
+  name: string;
+  artistId: string | null;
+  splitPercent: number | null;
+}
+
 export interface ModerationTrack {
   id: string;
   title: string;
@@ -35,8 +65,9 @@ export interface ModerationTrack {
     integratedLufs: number | null;
     truePeakDb: number | null;
   } | null;
-  album: { id: string; title: string; coverUrl: string } | null;
+  album: { id: string; title: string; coverUrl: string; type?: 'SINGLE' | 'EP' | 'ALBUM' } | null;
   uploadedBy: { id: string; displayName: string; email: string } | null;
+  credits: TrackCredit[];
 }
 
 interface PendingResponse {

@@ -16,6 +16,7 @@ import {
   Activity,
   ScrollText,
   Download,
+  Disc3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export interface NavSection {
 export const NAV_SECTIONS: readonly NavSection[] = [
   { to: '/dashboard', label: 'Tablero', icon: LayoutDashboard, description: 'Métricas en vivo y catálogo' },
   { to: '/moderation', label: 'Moderación', icon: ShieldCheck, description: 'Pistas esperando aprobación' },
+  { to: '/releases', label: 'Lanzamientos', icon: Disc3, description: 'EP y álbumes nuevos, agrupados' },
   { to: '/reports', label: 'Denuncias', icon: Flag, description: 'Canciones reportadas por plagio u otros motivos' },
   { to: '/artists', label: 'Artistas', icon: Users, description: 'Bloquear o eliminar artistas' },
   { to: '/verification', label: 'Verificación', icon: BadgeCheck, description: 'Candidatos al check azul, por actividad real' },
