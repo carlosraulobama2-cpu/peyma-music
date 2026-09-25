@@ -17,6 +17,10 @@ import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
 import { GenresPage } from './pages/GenresPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { VerificationPage } from './pages/VerificationPage';
+import { SystemStatusPage } from './pages/SystemStatusPage';
+import { AuditLogPage } from './pages/AuditLogPage';
+import { ExportPage } from './pages/ExportPage';
 
 /**
  * Las secciones del panel están declaradas en `lib/navigation.ts`
@@ -32,6 +36,7 @@ const PROTECTED_ROUTES = [
   // Ficha individual. No va en NAV_SECTIONS: se llega pulsando un artista,
   // no desde el menú.
   { path: '/artists/:id', element: <ArtistDetailPage /> },
+  { path: '/verification', element: <VerificationPage /> },
   { path: '/trending', element: <TrendingPage /> },
   { path: '/audience', element: <AudiencePage /> },
   { path: '/editorial', element: <EditorialPage /> },
@@ -41,6 +46,9 @@ const PROTECTED_ROUTES = [
   { path: '/users', element: <UsersPage /> },
   { path: '/upload', element: <UploadPage /> },
   { path: '/jobs', element: <JobsPage /> },
+  { path: '/system', element: <SystemStatusPage /> },
+  { path: '/audit', element: <AuditLogPage /> },
+  { path: '/export', element: <ExportPage /> },
   { path: '/settings', element: <SettingsPage /> },
 ] as const;
 

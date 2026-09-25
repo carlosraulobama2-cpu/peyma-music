@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, Headphones, Music, AlertTriangle, Clock, Crown, BadgeCheck } from 'lucide-react';
+import { Radio, Users, Headphones, Music, AlertTriangle, Clock, Crown, BadgeCheck, Flag } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { LiveListenerMap } from '../components/LiveListenerMap';
@@ -27,12 +27,18 @@ interface MetricCardProps {
   label: string;
   value: string;
   hint?: string;
-  tone?: 'normal' | 'warn' | 'live';
+  tone?: 'normal' | 'warn' | 'critical' | 'live';
 }
 
 function MetricCard({ icon: Icon, label, value, hint, tone = 'normal' }: MetricCardProps) {
   const toneClass =
-    tone === 'warn' ? 'text-amber-400' : tone === 'live' ? 'text-brand' : 'text-foreground';
+    tone === 'critical'
+      ? 'text-danger'
+      : tone === 'warn'
+        ? 'text-amber-400'
+        : tone === 'live'
+          ? 'text-brand'
+          : 'text-foreground';
 
   return (
     <div className="rounded-xl border border-white/10 bg-surface p-5">
@@ -195,8 +201,35 @@ export function DashboardPage() {
               icon={Clock}
               label="Esperando moderación"
               value={formatNumber(metrics.catalog.pendingReview)}
-              hint="Pistas invisibles hasta ser aprobadas"
-              tone={metrics.catalog.pendingReview > 0 ? 'warn' : 'normal'}
+              hint={
+                metrics.catalog.pendingReview >= metrics.alerts.moderationThreshold
+                  ? `Supera el umbral de ${metrics.alerts.moderationThreshold} — revisá pronto`
+                  : 'Pistas invisibles hasta ser aprobadas'
+              }
+              tone={
+                metrics.catalog.pendingReview >= metrics.alerts.moderationThreshold
+                  ? 'critical'
+                  : metrics.catalog.pendingReview > 0
+                    ? 'warn'
+                    : 'normal'
+              }
+            />
+            <MetricCard
+              icon={Flag}
+              label="Denuncias abiertas"
+              value={formatNumber(metrics.catalog.openReports)}
+              hint={
+                metrics.catalog.openReports >= metrics.alerts.reportsThreshold
+                  ? `Supera el umbral de ${metrics.alerts.reportsThreshold}`
+                  : 'Sin revisar todavía'
+              }
+              tone={
+                metrics.catalog.openReports >= metrics.alerts.reportsThreshold
+                  ? 'critical'
+                  : metrics.catalog.openReports > 0
+                    ? 'warn'
+                    : 'normal'
+              }
             />
             <MetricCard
               icon={AlertTriangle}

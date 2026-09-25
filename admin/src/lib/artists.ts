@@ -39,6 +39,26 @@ export function deleteTrack(trackId: string): Promise<{ message: string }> {
   return http.delete<{ message: string }>(`/admin/tracks/${trackId}`);
 }
 
+export interface VerificationCandidate {
+  id: string;
+  name: string;
+  imageUrl: string;
+  listeners: number;
+  streams: number;
+  score: number;
+  _count: { followers: number; tracks: number };
+}
+
+/**
+ * Artistas sin verificar, ordenados por el mismo ranking compuesto que
+ * decide quién va en primera fila (oyentes + reproducciones + seguidores).
+ * No es una cola de solicitudes — es "a quién le tocaría el check si
+ * alguien se pusiera a revisar ahora".
+ */
+export function fetchVerificationCandidates(limit = 30): Promise<{ candidates: VerificationCandidate[] }> {
+  return http.get(`/admin/artists/verification-candidates?limit=${limit}`);
+}
+
 /** Una canción tal como la ve el panel: incluye las pendientes y bloqueadas. */
 export interface AdminArtistTrack {
   id: string;

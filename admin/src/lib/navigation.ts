@@ -12,6 +12,10 @@ import {
   Music4,
   Settings,
   Flag,
+  BadgeCheck,
+  Activity,
+  ScrollText,
+  Download,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +41,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { to: '/moderation', label: 'Moderación', icon: ShieldCheck, description: 'Pistas esperando aprobación' },
   { to: '/reports', label: 'Denuncias', icon: Flag, description: 'Canciones reportadas por plagio u otros motivos' },
   { to: '/artists', label: 'Artistas', icon: Users, description: 'Bloquear o eliminar artistas' },
+  { to: '/verification', label: 'Verificación', icon: BadgeCheck, description: 'Candidatos al check azul, por actividad real' },
   { to: '/trending', label: 'Tendencias', icon: TrendingUp, description: 'El número 1 y el top de la plataforma' },
   { to: '/audience', label: 'Audiencia', icon: Headphones, description: 'Horas escuchadas, búsquedas y altas fallidas' },
   { to: '/editorial', label: 'Secciones', icon: LayoutList, description: 'Lo nuevo, Mola, Los mejores álbumes' },
@@ -45,5 +50,8 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { to: '/users', label: 'Usuarios', icon: UserCog, description: 'Cuentas y roles' },
   { to: '/upload', label: 'Subir canción', icon: UploadCloud, description: 'Ingesta de audio y metadatos' },
   { to: '/jobs', label: 'Procesamiento', icon: Cpu, description: 'Cola de waveform, loudness y transcodificación' },
+  { to: '/system', label: 'Estado del sistema', icon: Activity, description: 'Base de datos, almacenamiento, ffmpeg' },
+  { to: '/audit', label: 'Auditoría', icon: ScrollText, description: 'Bitácora completa, filtrable' },
+  { to: '/export', label: 'Exportar', icon: Download, description: 'Catálogo completo en CSV' },
   { to: '/settings', label: 'Ajustes', icon: Settings, description: 'Mantenimiento, audio, moderación' },
 ] as const;

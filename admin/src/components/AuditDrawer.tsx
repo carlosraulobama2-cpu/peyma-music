@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { X, ScrollText } from 'lucide-react';
 import { fetchAudit, type AuditEntry } from '../lib/users';
+import { ACTION_LABELS, formatWhen } from '../lib/audit';
 
 /**
  * Cajón lateral con las últimas acciones del panel.
@@ -8,27 +10,6 @@ import { fetchAudit, type AuditEntry } from '../lib/users';
  * Se monta sólo cuando está abierto (lo controla el shell), así el estado se
  * reinicia solo y no hace falta limpiarlo desde un efecto.
  */
-
-/** Etiquetas legibles. Las acciones se guardan en inglés y estables en la base. */
-const ACTION_LABELS: Record<string, string> = {
-  'track.approve': 'Aprobó la pista',
-  'track.reject': 'Rechazó la pista',
-  'track.delete': 'Eliminó la pista',
-  'artist.block': 'Bloqueó al artista',
-  'artist.unblock': 'Desbloqueó al artista',
-  'artist.delete': 'Eliminó al artista',
-  'artist.verify': 'Verificó al artista',
-  'artist.unverify': 'Retiró la verificación',
-  'editorial.create': 'Creó la sección',
-  'editorial.update': 'Editó la sección',
-  'editorial.delete': 'Eliminó la sección',
-  'editorial.items': 'Cambió el contenido de la sección',
-  'user.role': 'Cambió el rol de',
-};
-
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
 
 export function AuditDrawer({ onClose }: { onClose: () => void }) {
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
@@ -93,8 +74,11 @@ export function AuditDrawer({ onClose }: { onClose: () => void }) {
           </ul>
         </div>
 
-        <footer className="border-t border-white/10 px-5 py-3 text-[11px] text-muted">
-          Registro de sólo lectura: no hay forma de editarlo ni borrarlo desde el panel.
+        <footer className="flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-muted">
+          <span>Registro de sólo lectura: no hay forma de editarlo ni borrarlo.</span>
+          <Link to="/audit" onClick={onClose} className="shrink-0 font-semibold text-brand hover:underline">
+            Ver todo →
+          </Link>
         </footer>
       </aside>
     </div>
