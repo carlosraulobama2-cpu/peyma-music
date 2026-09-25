@@ -1,16 +1,41 @@
 import { useCallback, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import type { Ionicons } from '@expo/vector-icons';
 import { api, isAbortError } from '../../services';
 import { usePlayerStore, useSheetStore } from '../../store';
 import { useAsyncData } from '../../hooks';
 import { MediaCard } from './MediaCard';
+import { SectionHeader } from './SectionHeader';
 import { Skeleton } from '../Skeleton';
 import type { Genre, Track } from '../../types';
 import { GENRE_LABEL, isValidGenreForSection } from '../../types/music';
-import { useThemedStyles, spacing, typography, type Theme } from '../../theme';
+import { useThemedStyles, spacing, type Theme } from '../../theme';
 
 const PAGE_SIZE = 8;
+
+/** Un símbolo propio por ritmo — la misma idea que las portadas de género de Spotify, sin depender de una imagen. */
+const GENRE_ICON: Record<Genre, keyof typeof Ionicons.glyphMap> = {
+  lofi: 'moon',
+  jazz: 'wine',
+  ambient: 'cloud',
+  pop: 'star',
+  hiphop: 'mic',
+  classical: 'musical-notes',
+  electronic: 'flash',
+  rock: 'flame',
+};
+
+const GENRE_TINT: Record<Genre, string> = {
+  lofi: '#8B93FF',
+  jazz: '#D9A441',
+  ambient: '#6FC3E0',
+  pop: '#FF6FA5',
+  hiphop: '#FF8A3D',
+  classical: '#C9A6E8',
+  electronic: '#4AD9E8',
+  rock: '#FF5C5C',
+};
 
 interface GenreCarouselProps {
   genre: Genre;
@@ -79,7 +104,7 @@ export function GenreCarousel({ genre }: GenreCarouselProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{GENRE_LABEL[genre]}</Text>
+      <SectionHeader icon={GENRE_ICON[genre]} title={GENRE_LABEL[genre]} accentColor={GENRE_TINT[genre]} />
       <FlashList
         data={tracks}
         horizontal
@@ -119,16 +144,9 @@ export function GenreCarousel({ genre }: GenreCarouselProps) {
   );
 }
 
-const makeStyles = ({ colors }: Theme) => ({
+const makeStyles = (_theme: Theme) => ({
   container: {
     marginBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text.primary,
-    fontFamily: typography.family.bold,
-    fontSize: typography.size.lg,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
   },
   listContent: {
     paddingHorizontal: spacing.lg,

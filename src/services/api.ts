@@ -318,6 +318,7 @@ export const api = {
         title: section.title,
         slug: section.slug,
         subtitle: section.subtitle ?? undefined,
+        kind: section.kind,
         layout: section.layout,
         tracks: section.tracks.map((t) => mapTrack(t)),
         albums: section.albums.map((a) => ({ id: a.id, title: a.title, coverUrl: a.coverUrl, artistName: a.artist.name })),
@@ -375,6 +376,7 @@ export const api = {
       title: section.title,
       slug: section.slug,
       subtitle: section.subtitle ?? undefined,
+      kind: section.kind,
       layout: section.layout,
       tracks: section.tracks.map((t) => mapTrack(t)),
       albums: section.albums.map((a) => ({
@@ -500,6 +502,7 @@ interface BackendEditorialSection {
   title: string;
   slug: string;
   subtitle: string | null;
+  kind: string;
   layout: 'CAROUSEL' | 'GRID' | 'HERO';
   tracks: BackendTrack[];
   albums: { id: string; title: string; coverUrl: string; artist: { name: string } }[];
@@ -512,6 +515,8 @@ export interface EditorialSection {
   title: string;
   slug: string;
   subtitle?: string;
+  /** NEW_RELEASES / TOP_TRACKS / TOP_ALBUMS / TOP_ARTISTS / MANUAL — ver el ícono simbólico de cada una en EditorialSections.tsx. */
+  kind: string;
   layout: 'CAROUSEL' | 'GRID' | 'HERO';
   tracks: Track[];
   albums: { id: string; title: string; coverUrl: string; artistName: string }[];

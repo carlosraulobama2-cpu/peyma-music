@@ -2,6 +2,7 @@
  * Peyma Music — Componentes de Inicio (Home)
  */
 export { MediaCard, type MediaCardProps } from './MediaCard';
+export { SectionHeader } from './SectionHeader';
 export { HomeHeader } from './HomeHeader';
 export { QuickFilterBar } from './QuickFilterBar';
 export { QuickAccessGrid } from './QuickAccessGrid';

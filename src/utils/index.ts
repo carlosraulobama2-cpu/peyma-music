@@ -49,6 +49,15 @@ export function getGreeting(): string {
   return 'Buenas noches';
 }
 
+/** Ícono que acompaña al saludo — el mismo corte horario que `getGreeting()`, para que nunca queden desincronizados. */
+export function getGreetingIcon(): 'moon' | 'partly-sunny' | 'sunny' {
+  const hour = new Date().getHours();
+  if (hour < 6) return 'moon';
+  if (hour < 12) return 'partly-sunny';
+  if (hour < 20) return 'sunny';
+  return 'moon';
+}
+
 export function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));

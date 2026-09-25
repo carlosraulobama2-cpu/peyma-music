@@ -1,12 +1,15 @@
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { api } from '../../services';
 import { useAsyncData } from '../../hooks';
 import { usePlayerStore, useSheetStore } from '../../store';
 import { MediaCard } from './MediaCard';
+import { SectionHeader } from './SectionHeader';
 import { Skeleton } from '../Skeleton';
-import { useThemedStyles, spacing, typography, type Theme } from '../../theme';
+import { useThemedStyles, spacing, type Theme } from '../../theme';
+
+const NEW_RELEASES_TINT = '#4AD9E8';
 
 /** "Novedades": filtrado exclusivamente por `isNewRelease` o `releaseDate` dentro de los últimos 30 días. */
 export function NewReleasesSection() {
@@ -36,7 +39,7 @@ export function NewReleasesSection() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Novedades</Text>
+      <SectionHeader icon="flash" title="Novedades" subtitle="Lo último publicado" accentColor={NEW_RELEASES_TINT} />
       <FlashList
         data={tracks}
         horizontal
@@ -64,16 +67,9 @@ export function NewReleasesSection() {
   );
 }
 
-const makeStyles = ({ colors }: Theme) => ({
+const makeStyles = (_theme: Theme) => ({
   container: {
     marginBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text.primary,
-    fontFamily: typography.family.bold,
-    fontSize: typography.size.lg,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
   },
   listContent: {
     paddingHorizontal: spacing.lg,
