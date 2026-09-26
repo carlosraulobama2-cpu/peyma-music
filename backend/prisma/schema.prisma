@@ -1002,6 +1002,24 @@ model SearchLog {
   @@index([createdAt])
 }
 
+/// Desde qué app se abrió la sección "Radio en vivo".
+enum RadioPlatform {
+  APP
+  WEB
+}
+
+/// Cuántas veces se abrió "Radio en vivo" (ver `radioApi.ts` en la app y la
+/// web) — sólo un conteo de uso, nunca contra qué estación: eso es contenido
+/// de un tercero (radio-browser.info) que Peyma no aloja ni modera, y no
+/// hay ninguna razón para registrar qué escucha cada usuario ahí.
+model RadioOpenEvent {
+  id        String        @id @default(cuid())
+  platform  RadioPlatform
+  createdAt DateTime      @default(now())
+
+  @@index([createdAt])
+}
+
 /// En qué punto falló un alta de cuenta.
 enum SignupStage {
   VALIDATION // el formulario no pasó las reglas (correo mal formado, contraseña corta)

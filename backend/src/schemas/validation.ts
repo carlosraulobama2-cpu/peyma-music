@@ -244,6 +244,12 @@ export const generatePlaylistSchema = z.object({
   genre: genreSlug.optional(),
 });
 
+// --- Radio en vivo (ver routes/radio.ts) ---
+
+export const logRadioOpenSchema = z.object({
+  platform: z.enum(['APP', 'WEB']),
+});
+
 // --- Reproducciones (ver services/streamLog.ts, routes/streams.ts) ---
 
 export const logStreamSchema = z.object({

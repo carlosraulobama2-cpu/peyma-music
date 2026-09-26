@@ -51,6 +51,7 @@ import {
   getTopSearches,
   getListeningHeatmap,
   getRetentionStats,
+  getRadioOpenStats,
   ROLLING_WINDOW_DAYS as AUDIENCE_WINDOW_DAYS,
   getPlayCounts,
 } from '../services/audienceStats';
@@ -1454,6 +1455,13 @@ router.get('/audience/heatmap', async (req: AuthRequest, res: Response) => {
 router.get('/audience/retention', async (_req: AuthRequest, res: Response) => {
   const stats = await getRetentionStats();
   res.json(stats);
+});
+
+/** Uso de "Radio en vivo" (Radio Browser) — sólo un conteo, nunca qué estación. */
+router.get('/audience/radio', async (req: AuthRequest, res: Response) => {
+  const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 90) : AUDIENCE_WINDOW_DAYS;
+  const stats = await getRadioOpenStats(days);
+  res.json({ windowDays: days, ...stats });
 });
 
 /** Qué busca la gente, y qué busca sin encontrar nada. */

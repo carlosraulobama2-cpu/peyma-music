@@ -20,6 +20,7 @@ export {
   searchStations,
   getTopStations,
   registerStationClick,
+  logRadioOpen,
   stationToTrack,
   isRadioTrack,
   RADIO_TRACK_ID_PREFIX,

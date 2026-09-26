@@ -384,3 +384,26 @@ export async function getPlayCounts(trackIds: string[]): Promise<Map<string, num
 
   return new Map(rows.map((row) => [row.trackId, row._count._all]));
 }
+
+export interface RadioOpenStats {
+  total: number;
+  app: number;
+  web: number;
+}
+
+/**
+ * Cuántas veces se abrió "Radio en vivo" en la ventana — nunca contra qué
+ * estación, eso es contenido de un tercero que Peyma no modera (ver
+ * `routes/radio.ts`). Sólo responde "¿se usa esto?", por plataforma.
+ */
+export async function getRadioOpenStats(days = ROLLING_WINDOW_DAYS): Promise<RadioOpenStats> {
+  const rows = await prisma.radioOpenEvent.groupBy({
+    by: ['platform'],
+    where: { createdAt: { gte: windowStart(days) } },
+    _count: { _all: true },
+  });
+
+  const app = rows.find((r) => r.platform === 'APP')?._count._all ?? 0;
+  const web = rows.find((r) => r.platform === 'WEB')?._count._all ?? 0;
+  return { total: app + web, app, web };
+}

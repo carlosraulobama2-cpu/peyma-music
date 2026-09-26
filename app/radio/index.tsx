@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { FlashList } from '@shopify/flash-list';
@@ -11,6 +11,7 @@ import {
   searchStations,
   getTopStations,
   registerStationClick,
+  logRadioOpen,
   stationToTrack,
   RADIO_TRACK_ID_PREFIX,
   type RadioStation,
@@ -53,6 +54,10 @@ export default function RadioScreen() {
   const { currentTrack, isPlaying, isBuffering, play, togglePlayPause } = useAudioPlayer();
 
   const [activeTag, setActiveTag] = useState('');
+
+  useEffect(() => {
+    logRadioOpen();
+  }, []);
 
   const {
     data: stations,

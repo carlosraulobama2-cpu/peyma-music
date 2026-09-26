@@ -94,6 +94,16 @@ export interface RetentionStats {
 
 export const fetchRetentionStats = () => http.get<RetentionStats>('/admin/audience/retention');
 
+export interface RadioOpenStats {
+  windowDays: number;
+  total: number;
+  app: number;
+  web: number;
+}
+
+/** Uso de "Radio en vivo" (Radio Browser) — sólo un conteo, nunca qué estación: ver backend/src/routes/radio.ts. */
+export const fetchRadioOpenStats = () => http.get<RadioOpenStats>('/admin/audience/radio');
+
 export const fetchTopSearches = () =>
   http.get<{ windowDays: number; searches: TopSearch[]; withoutResults: TopSearch[] }>('/admin/audience/searches');
 

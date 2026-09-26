@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock, Repeat } from 'lucide-react';
+import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock, Repeat, Radio } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import {
@@ -9,6 +9,7 @@ import {
   fetchSignupFailures,
   fetchListeningHeatmap,
   fetchRetentionStats,
+  fetchRadioOpenStats,
   formatHours,
   SIGNUP_STAGE_LABELS,
   type TopListener,
@@ -18,6 +19,7 @@ import {
   type SignupStage,
   type HeatmapCell,
   type RetentionStats,
+  type RadioOpenStats,
 } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
 
@@ -32,13 +34,14 @@ import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
  * las dos cosas como si fueran medición.
  */
 
-type Tab = 'oyentes' | 'artistas' | 'horarios' | 'retencion' | 'busquedas' | 'altas';
+type Tab = 'oyentes' | 'artistas' | 'horarios' | 'retencion' | 'radio' | 'busquedas' | 'altas';
 
 const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'oyentes', label: 'Oyentes', icon: Clock },
   { id: 'artistas', label: 'Artistas por tiempo', icon: TrendingUp },
   { id: 'horarios', label: 'Horarios', icon: CalendarClock },
   { id: 'retencion', label: 'Retención', icon: Repeat },
+  { id: 'radio', label: 'Radio en vivo', icon: Radio },
   { id: 'busquedas', label: 'Qué se busca', icon: SearchIcon },
   { id: 'altas', label: 'Altas fallidas', icon: UserX },
 ];
@@ -71,6 +74,7 @@ export function AudiencePage() {
   const [artists, setArtists] = useState<TopArtistByTime[] | null>(null);
   const [heatmap, setHeatmap] = useState<HeatmapCell[] | null>(null);
   const [retention, setRetention] = useState<RetentionStats | null>(null);
+  const [radioStats, setRadioStats] = useState<RadioOpenStats | null>(null);
   const [searches, setSearches] = useState<{ all: TopSearch[]; empty: TopSearch[] } | null>(null);
   const [signups, setSignups] = useState<{ byStage: Partial<Record<SignupStage, number>>; attempts: SignupAttempt[] } | null>(
     null,
@@ -98,6 +102,10 @@ export function AudiencePage() {
     } else if (tab === 'retencion') {
       fetchRetentionStats()
         .then((r) => !cancelled && setRetention(r))
+        .catch(fail);
+    } else if (tab === 'radio') {
+      fetchRadioOpenStats()
+        .then((r) => !cancelled && setRadioStats(r))
         .catch(fail);
     } else if (tab === 'busquedas') {
       fetchTopSearches()
@@ -288,6 +296,8 @@ export function AudiencePage() {
 
       {tab === 'retencion' && (!retention ? <SkeletonList /> : <RetentionPanel stats={retention} />)}
 
+      {tab === 'radio' && (!radioStats ? <SkeletonList /> : <RadioUsagePanel stats={radioStats} />)}
+
       {tab === 'busquedas' &&
         (!searches ? (
           <SkeletonList />
@@ -467,6 +477,45 @@ function RetentionPanel({ stats }: { stats: RetentionStats }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Sólo un conteo de aperturas, nunca qué estación — "Radio en vivo"
+ * reproduce contenido de un tercero (radio-browser.info) que no pasa por
+ * este backend, así que esto es lo único que el panel puede saber al
+ * respecto: si se usa o no.
+ */
+function RadioUsagePanel({ stats }: { stats: RadioOpenStats }) {
+  if (stats.total === 0) {
+    return <Empty>Nadie abrió "Radio en vivo" en la ventana.</Empty>;
+  }
+
+  const appPct = Math.round((stats.app / stats.total) * 100);
+
+  return (
+    <div>
+      <p className="mb-6 text-sm text-muted">
+        Ventana de {stats.windowDays} días. Es sólo un conteo de uso: la app le habla directo a Radio Browser, así
+        que qué estación escucha cada quien no pasa por acá ni se guarda.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Total de aperturas</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-brand">{stats.total}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Desde la app</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums">{stats.app}</p>
+          <p className="mt-1 text-xs text-muted">{appPct}% del total</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Desde la web</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums">{stats.web}</p>
+          <p className="mt-1 text-xs text-muted">{100 - appPct}% del total</p>
+        </div>
       </div>
     </div>
   );

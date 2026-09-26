@@ -15,6 +15,7 @@
  * `playerStore`.
  */
 import type { Track } from '../types';
+import { http } from './httpClient';
 
 const MIRRORS = [
   'https://de1.api.radio-browser.info',
@@ -125,6 +126,15 @@ export function getTopStations(limit = 40): Promise<RadioStation[]> {
  */
 export function registerStationClick(stationId: string): void {
   radioFetch(`/json/url/${stationId}`).catch(() => {});
+}
+
+/**
+ * Avisa a nuestro propio backend que se abrió la sección — sólo un conteo
+ * por plataforma para el panel ("¿se usa esto?"), nunca qué estación: eso
+ * es contenido de un tercero que Peyma no modera. Se dispara y se olvida.
+ */
+export function logRadioOpen(): void {
+  http.post('/radio/opened', { platform: 'APP' }).catch(() => {});
 }
 
 /** Prefijo que distingue una estación de radio de una pista real del catálogo — ver `isRadioTrack` y `playerStore`. */
