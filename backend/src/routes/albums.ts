@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { authMiddleware, optionalAuthMiddleware, type AuthRequest } from '../middleware/auth';
 import { createAlbumSchema, querySchema, idParamSchema } from '../schemas/validation';
-import { NotFoundError } from '../utils/errors';
+import { ForbiddenError, NotFoundError } from '../utils/errors';
 
 const router = Router();
 
@@ -51,8 +51,21 @@ router.get('/:id', optionalAuthMiddleware, async (req, res: Response) => {
   res.json({ album });
 });
 
-router.post('/', authMiddleware, async (req, res: Response) => {
+/**
+ * Crea un álbum o EP vacío, para subirle canciones después (una llamada a
+ * `POST /uploads` con este `albumId` por cada pista — ver routes/uploads.ts).
+ * El artista tiene que ser dueño del perfil, salvo que quien pide sea admin
+ * (mismo criterio que el pipeline de subida).
+ */
+router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   const data = createAlbumSchema.parse(req.body);
+
+  const artist = await prisma.artist.findUnique({ where: { id: data.artistId } });
+  if (!artist) throw new NotFoundError('Artista');
+  if (req.user!.role !== 'ADMIN' && artist.ownerId !== req.user!.id) {
+    throw new ForbiddenError('Este perfil de artista pertenece a otro usuario');
+  }
+
   const album = await prisma.album.create({
     data,
     include: { artist: ARTIST_SUMMARY, _count: { select: { tracks: true } } },

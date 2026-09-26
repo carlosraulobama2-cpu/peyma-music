@@ -4,8 +4,25 @@ import { useSearchParams } from 'react-router-dom';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { BadgeCheck } from 'lucide-react';
-import { fetchArtists, setArtistBlocked, setArtistVerified, deleteArtist, type AdminArtist } from '../lib/artists';
+import { BadgeCheck, MoonStar } from 'lucide-react';
+import {
+  fetchArtists,
+  setArtistBlocked,
+  setArtistVerified,
+  deleteArtist,
+  fetchInactiveArtists,
+  type AdminArtist,
+  type InactiveArtist,
+} from '../lib/artists';
+
+/** "3 meses", "1 año 2 meses" — nunca días, no hace falta esa precisión para saber que alguien lleva tiempo sin publicar. */
+function formatSilence(lastUploadAt: string): string {
+  const months = Math.floor((Date.now() - new Date(lastUploadAt).getTime()) / (30 * 24 * 60 * 60 * 1000));
+  if (months < 12) return `${months} mes${months === 1 ? '' : 'es'}`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return rest === 0 ? `${years} año${years === 1 ? '' : 's'}` : `${years} año${years === 1 ? '' : 's'} ${rest} mes${rest === 1 ? '' : 'es'}`;
+}
 
 export function ArtistsPage() {
   // El buscador se inicializa desde la URL: los enlaces "ver artista" de
@@ -13,7 +30,9 @@ export function ArtistsPage() {
   // y sin esto el filtro se ignoraría y caerías en la lista completa.
   const [searchParams, setSearchParams] = useSearchParams();
   const [showOnlyVerified, setShowOnlyVerified] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [artists, setArtists] = useState<AdminArtist[]>([]);
+  const [inactive, setInactive] = useState<InactiveArtist[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
@@ -40,6 +59,13 @@ export function ArtistsPage() {
     const timer = setTimeout(() => load(search), 250);
     return () => clearTimeout(timer);
   }, [search, load]);
+
+  useEffect(() => {
+    if (!showInactive) return;
+    fetchInactiveArtists()
+      .then((res) => setInactive(res.artists))
+      .catch((err) => setError(err instanceof Error ? err.message : 'No se pudieron cargar los artistas inactivos.'));
+  }, [showInactive]);
 
   const handleToggleBlock = async (artist: AdminArtist) => {
     setBusyId(artist.id);
@@ -94,36 +120,60 @@ export function ArtistsPage() {
       subtitle='Bloquear oculta al artista y todas sus pistas, pero es reversible. Eliminar destruye sus álbumes y canciones.'
     >
 
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar artista"
-          className="mt-6 w-full max-w-sm rounded-lg border border-white/15 bg-black/20 px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand"
-        />
+        {!showInactive && (
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar artista"
+            className="mt-6 w-full max-w-sm rounded-lg border border-white/15 bg-black/20 px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand"
+          />
+        )}
 
         {/* Filtro en cliente y no en el servidor: la lista viene entera (el
             catálogo de artistas es pequeño) y así alternar es instantáneo,
-            sin un viaje extra a la API por cada clic. */}
-        <div className="mt-3 flex gap-2">
+            sin un viaje extra a la API por cada clic. "Inactivos" es la
+            excepción: pide su propia lista, porque no es un recorte de
+            `artists` sino artistas ordenados por antigüedad de su última
+            subida, algo que el catálogo cargado acá no trae. */}
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setShowOnlyVerified(false)}
+            onClick={() => {
+              setShowOnlyVerified(false);
+              setShowInactive(false);
+            }}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-              showOnlyVerified ? 'bg-white/10 text-muted hover:text-foreground' : 'bg-white text-black'
+              !showOnlyVerified && !showInactive ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
             }`}
           >
             Todos ({artists.length})
           </button>
           <button
             type="button"
-            onClick={() => setShowOnlyVerified(true)}
+            onClick={() => {
+              setShowOnlyVerified(true);
+              setShowInactive(false);
+            }}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-              showOnlyVerified ? 'bg-sky-500/20 text-sky-300' : 'bg-white/10 text-muted hover:text-foreground'
+              showOnlyVerified && !showInactive ? 'bg-sky-500/20 text-sky-300' : 'bg-white/10 text-muted hover:text-foreground'
             }`}
           >
             <BadgeCheck size={12} aria-hidden />
             Verificados ({artists.filter((a) => a.isVerified).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowOnlyVerified(false);
+              setShowInactive(true);
+            }}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              showInactive ? 'bg-amber-500/20 text-amber-300' : 'bg-white/10 text-muted hover:text-foreground'
+            }`}
+          >
+            <MoonStar size={12} aria-hidden />
+            Inactivos
           </button>
         </div>
 
@@ -133,7 +183,45 @@ export function ArtistsPage() {
           </p>
         )}
 
-        {loading ? (
+        {showInactive ? (
+          !inactive ? (
+            <div className="mt-8 flex flex-col gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl border border-white/10 bg-surface" />
+              ))}
+            </div>
+          ) : inactive.length === 0 ? (
+            <p className="mt-10 text-sm text-muted">
+              Ningún artista con catálogo lleva 3 meses o más sin publicar.
+            </p>
+          ) : (
+            <ul className="mt-8 flex flex-col gap-2">
+              {inactive.map((artist) => (
+                <li
+                  key={artist.artistId}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-surface px-4 py-3"
+                >
+                  <CoverImage src={artist.imageUrl} alt={artist.name} size={44} rounded="rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      to={`/artists/${artist.artistId}`}
+                      className="flex items-center gap-1.5 truncate text-sm font-semibold hover:underline"
+                    >
+                      {artist.name}
+                      {artist.isVerified && <BadgeCheck size={13} className="shrink-0 text-sky-400" aria-label="Verificado" />}
+                    </Link>
+                    <p className="truncate text-xs text-muted">
+                      {artist.trackCount} pista{artist.trackCount === 1 ? '' : 's'} en su catálogo
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-400">
+                    Sin publicar hace {formatSilence(artist.lastUploadAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : loading ? (
           <div className="mt-8 flex flex-col gap-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-20 animate-pulse rounded-xl border border-white/10 bg-surface" />

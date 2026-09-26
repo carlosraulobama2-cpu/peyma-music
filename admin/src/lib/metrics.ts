@@ -25,9 +25,12 @@ export interface AdminMetrics {
     blockedArtists: number;
     verifiedArtists: number;
     totalUsers: number;
+    openReports: number;
   };
   audience: { streams28d: number; listeners28d: number; liveListeners: number };
   jobs: { failed: number; active: number };
+  /** Umbrales configurables desde Ajustes → Alertas — ver DashboardPage. */
+  alerts: { moderationThreshold: number; reportsThreshold: number };
   dailyStreams: { day: string; streams: number }[];
   topGenres: { genre: string; streams: number }[];
 }

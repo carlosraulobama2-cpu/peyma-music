@@ -93,6 +93,17 @@ export async function fetchAlbums(limit = 12): Promise<CatalogAlbum[]> {
   return res.albums ?? [];
 }
 
+export interface TopAlbum extends CatalogAlbum {
+  rank: number;
+  streams: number;
+}
+
+/** "Top 100 álbumes" — reproducciones reales de los últimos 28 días, sin sencillos (ver backend/src/services/trending.ts). */
+export async function fetchTopAlbums(limit = 100): Promise<TopAlbum[]> {
+  const res = await http.get<{ albums: TopAlbum[] }>(`/recommendations/top-albums?limit=${limit}`);
+  return res.albums;
+}
+
 export async function fetchArtistTracks(artistId: string, limit = 30): Promise<CatalogTrack[]> {
   const res = await http.get<Paginated<CatalogTrack>>(`/tracks?artistId=${artistId}&limit=${limit}`);
   return res.tracks ?? [];

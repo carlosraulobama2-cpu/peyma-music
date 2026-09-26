@@ -83,6 +83,19 @@ describe('userBehaviorStore — topGenres / topArtists', () => {
   });
 });
 
+describe('userBehaviorStore — géneros libres (no la lista vieja de 8)', () => {
+  it('cuenta la afinidad de un género que no estaba en la lista heredada (p. ej. "Rap")', () => {
+    const store = useUserBehaviorStore.getState();
+    store.recordEvent({ trackId: 't1', artistId: 'a1', genre: 'Rap', type: 'liked' }); // +25
+    store.recordEvent({ trackId: 't2', artistId: 'a1', genre: 'Rap', type: 'completed' }); // +10
+    useUserBehaviorStore.getState().recomputeNow();
+
+    const { metrics } = useUserBehaviorStore.getState();
+    expect(metrics.genreScores.Rap).toBe(105); // (25 + 10) * 3
+    expect(metrics.topGenres.map((g) => g.genre)).toEqual(['Rap']);
+  });
+});
+
 describe('userBehaviorStore — reset', () => {
   it('limpia eventos y vuelve las métricas a cero', () => {
     const store = useUserBehaviorStore.getState();

@@ -1,4 +1,4 @@
-import { http } from "./httpClient";
+import { http, uploadFile, getAuthToken } from "./httpClient";
 
 /**
  * Subida de una canción desde la web.
@@ -28,23 +28,31 @@ export const UPLOAD_STEPS = [
 
 export type UploadStep = 0 | 1 | 2 | 3 | 4;
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+/** Mismo universo que el enum `CreditRole` del backend. */
+export type CreditRole =
+  | "MAIN_ARTIST"
+  | "FEATURED_ARTIST"
+  | "REMIXER"
+  | "PRODUCER"
+  | "COMPOSER"
+  | "WRITER"
+  | "MIX_ENGINEER"
+  | "MASTERING_ENGINEER";
 
-/**
- * Sube un archivo como multipart.
- *
- * No se fija `Content-Type`: el navegador tiene que generarlo con el
- * `boundary` del FormData, y ponerlo a mano rompe el parseo en el servidor.
- */
-async function uploadFile(path: string, formData: FormData, token: string | null): Promise<void> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+export const CREDIT_ROLE_LABEL: Record<CreditRole, string> = {
+  MAIN_ARTIST: "Artista principal",
+  FEATURED_ARTIST: "Artista invitado",
+  REMIXER: "Remixer",
+  PRODUCER: "Productor",
+  COMPOSER: "Compositor",
+  WRITER: "Letrista",
+  MIX_ENGINEER: "Mezcla",
+  MASTERING_ENGINEER: "Masterización",
+};
 
-  const response = await fetch(`${API_URL}${path}`, { method: "POST", headers, body: formData });
-  if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(data?.error ?? `Falló la subida (${response.status})`);
-  }
+export interface CreditDraft {
+  role: CreditRole;
+  name: string;
 }
 
 /**
@@ -73,6 +81,10 @@ export interface UploadParams {
   title: string;
   audio: File;
   cover: File;
+  /** Sin álbum, el backend publica un sencillo (ver publish en uploads.ts). */
+  albumId?: string;
+  /** Créditos a nombre suelto — compositor, productor, etc. Ninguno es obligatorio. */
+  credits?: CreditDraft[];
   /**
    * Letra en texto plano, opcional. Viaja en el paso de metadatos, que hasta
    * ahora el pipeline de la web se saltaba entero.
@@ -95,25 +107,31 @@ export async function uploadTrack({
   title,
   audio,
   cover,
+  albumId,
+  credits,
   lyrics,
   genreId,
   token,
   onStep,
 }: UploadParams): Promise<PublishedTrack> {
   onStep?.(0);
-  const { upload } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title });
+  const { upload } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title, albumId });
 
   onStep?.(1);
   const duration = await readAudioDuration(audio);
   const audioForm = new FormData();
   audioForm.append("audio", audio);
   if (duration > 0) audioForm.append("durationSeconds", String(Math.round(duration)));
-  await uploadFile(`/uploads/${upload.id}/audio`, audioForm, token);
+  await uploadFile(`/uploads/${upload.id}/audio`, audioForm);
 
   onStep?.(2);
   const coverForm = new FormData();
   coverForm.append("cover", cover);
-  await uploadFile(`/uploads/${upload.id}/cover`, coverForm, token);
+  await uploadFile(`/uploads/${upload.id}/cover`, coverForm);
+
+  if (credits && credits.length > 0) {
+    await http.patch(`/uploads/${upload.id}`, { creditsDraft: credits });
+  }
 
   onStep?.(3);
   await http.post(`/uploads/${upload.id}/analyze`);
@@ -136,4 +154,111 @@ export async function uploadTrack({
   const { track } = await http.post<{ track: PublishedTrack }>(`/uploads/${upload.id}/publish`, { confirm: true });
 
   return track;
+}
+
+export interface CreatedAlbum {
+  id: string;
+  title: string;
+  coverUrl: string;
+  type: "SINGLE" | "EP" | "ALBUM";
+}
+
+export interface ReleaseTrackInput {
+  title: string;
+  audio: File;
+}
+
+export interface UploadReleaseParams {
+  artistId: string;
+  albumTitle: string;
+  albumType: "EP" | "ALBUM";
+  /** Portada compartida por el álbum y por cada una de sus canciones. */
+  cover: File;
+  tracks: ReleaseTrackInput[];
+  credits?: CreditDraft[];
+  onProgress?: (info: { trackIndex: number; totalTracks: number; step: UploadStep }) => void;
+}
+
+export interface PublishedRelease {
+  album: CreatedAlbum;
+  tracks: PublishedTrack[];
+}
+
+/**
+ * Publica un EP o álbum entero: crea el álbum y sube cada canción por el
+ * mismo pipeline de `uploadTrack`, todas con el mismo `albumId`. Mismo
+ * mecanismo que `src/services/uploadPipeline.ts` en la app — ver el
+ * comentario ahí para el porqué del primer track especial: `POST /albums`
+ * exige una `coverUrl` que ya sea una URL válida, y la única forma de
+ * conseguir una es subir la portada primero, así que la primera canción
+ * sube su audio y portada ANTES de que el álbum exista, y recién con esa
+ * URL real se crea el álbum y se le asigna esa canción.
+ */
+export async function uploadRelease({
+  artistId,
+  albumTitle,
+  albumType,
+  cover,
+  tracks,
+  credits,
+  onProgress,
+}: UploadReleaseParams): Promise<PublishedRelease> {
+  if (tracks.length < 2) {
+    throw new Error("Un EP o álbum necesita al menos 2 canciones.");
+  }
+
+  const [first, ...rest] = tracks;
+  const report = (trackIndex: number, step: UploadStep) => onProgress?.({ trackIndex, totalTracks: tracks.length, step });
+
+  report(0, 0);
+  const { upload: draft } = await http.post<{ upload: { id: string } }>("/uploads", { artistId, title: first!.title });
+
+  report(0, 1);
+  const duration = await readAudioDuration(first!.audio);
+  const audioForm = new FormData();
+  audioForm.append("audio", first!.audio);
+  if (duration > 0) audioForm.append("durationSeconds", String(Math.round(duration)));
+  await uploadFile(`/uploads/${draft.id}/audio`, audioForm);
+
+  report(0, 2);
+  const coverForm = new FormData();
+  coverForm.append("cover", cover);
+  const { upload: withCover } = await uploadFile<{ upload: { coverUrl: string | null } }>(`/uploads/${draft.id}/cover`, coverForm);
+  if (!withCover.coverUrl) throw new Error("No se pudo subir la portada.");
+
+  const { album } = await http.post<{ album: CreatedAlbum }>("/albums", {
+    artistId,
+    title: albumTitle,
+    coverUrl: withCover.coverUrl,
+    releaseYear: new Date().getFullYear(),
+    type: albumType,
+  });
+
+  await http.patch(`/uploads/${draft.id}`, {
+    albumId: album.id,
+    ...(credits && credits.length > 0 ? { creditsDraft: credits } : {}),
+  });
+
+  report(0, 3);
+  await http.post(`/uploads/${draft.id}/analyze`);
+  report(0, 4);
+  const { track: firstTrack } = await http.post<{ track: PublishedTrack }>(`/uploads/${draft.id}/publish`, { confirm: true });
+
+  const publishedTracks = [firstTrack];
+  for (let i = 0; i < rest.length; i++) {
+    const input = rest[i]!;
+    const track = await uploadTrack({
+      artistId,
+      title: input.title,
+      audio: input.audio,
+      cover,
+      albumId: album.id,
+      credits,
+      token: getAuthToken(),
+      onStep: (step) => report(i + 1, step),
+    });
+    publishedTracks.push(track);
+  }
+
+  return { album, tracks: publishedTracks };
 }

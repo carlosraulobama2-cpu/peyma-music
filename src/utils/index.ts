@@ -49,6 +49,15 @@ export function getGreeting(): string {
   return 'Buenas noches';
 }
 
+/** Ícono que acompaña al saludo — el mismo corte horario que `getGreeting()`, para que nunca queden desincronizados. */
+export function getGreetingIcon(): 'moon' | 'partly-sunny' | 'sunny' {
+  const hour = new Date().getHours();
+  if (hour < 6) return 'moon';
+  if (hour < 12) return 'partly-sunny';
+  if (hour < 20) return 'sunny';
+  return 'moon';
+}
+
 export function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
@@ -91,30 +100,4 @@ export function sumDuration(tracks: readonly { duration: number }[]): number {
 /** Espera `ms`. Útil en reintentos con backoff. */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * PRNG determinista (mulberry32) a partir de un string semilla. Se usa para
- * generar estadísticas de artista "realistas" que no cambian en cada render
- * pero tampoco son iguales entre artistas — sin depender de un backend real.
- */
-export function seededRandom(seed: string): () => number {
-  let h = 1779033703 ^ seed.length;
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  let state = h >>> 0;
-  return () => {
-    state |= 0;
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Entero pseudoaleatorio en `[min, max]`, usando el generador dado. */
-export function seededInt(rand: () => number, min: number, max: number): number {
-  return Math.floor(rand() * (max - min + 1)) + min;
 }

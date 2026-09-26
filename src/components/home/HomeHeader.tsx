@@ -2,7 +2,13 @@ import { View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme, useThemedStyles, spacing, typography, motion, radius, type Theme } from '../../theme';
-import { getGreeting } from '../../utils';
+import { getGreeting, getGreetingIcon } from '../../utils';
+
+const GREETING_TINT: Record<ReturnType<typeof getGreetingIcon>, string> = {
+  moon: '#8B93FF',
+  'partly-sunny': '#FFB84D',
+  sunny: '#FFD24D',
+};
 
 interface HomeHeaderProps {
   onPressProfile: () => void;
@@ -14,10 +20,16 @@ interface HomeHeaderProps {
 export function HomeHeader({ onPressProfile, onPressNotifications, hasUnreadNotifications }: HomeHeaderProps) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const greetingIcon = getGreetingIcon();
 
   return (
     <Animated.View entering={FadeInDown.duration(motion.duration.normal)} style={styles.row}>
-      <Text style={styles.greeting}>{getGreeting()}</Text>
+      <View style={styles.greetingRow}>
+        <View style={[styles.greetingIconBadge, { backgroundColor: `${GREETING_TINT[greetingIcon]}26` }]}>
+          <Ionicons name={greetingIcon} size={16} color={GREETING_TINT[greetingIcon]} />
+        </View>
+        <Text style={styles.greeting}>{getGreeting()}</Text>
+      </View>
 
       <View style={styles.actions}>
         <Pressable
@@ -53,10 +65,24 @@ const makeStyles = ({ colors }: Theme) => ({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
   },
+  greetingRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+    flexShrink: 1,
+  },
+  greetingIconBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.full,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
   greeting: {
     color: colors.text.primary,
     fontSize: typography.size['2xl'],
     fontFamily: typography.family.bold,
+    flexShrink: 1,
   },
   actions: {
     flexDirection: 'row' as const,

@@ -1,12 +1,8 @@
 import { http } from './httpClient';
+import { formatHoursMinutes } from './format';
 
 /** Formatea segundos como "12 h 34 min" o "34 min". */
-export function formatHours(seconds: number): string {
-  const totalMinutes = Math.round(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
+export const formatHours = formatHoursMinutes;
 
 export interface TopListener {
   userId: string;
@@ -79,6 +75,34 @@ export const fetchTopListeners = (order: 'desc' | 'asc' = 'desc') =>
 
 export const fetchTopArtists = () =>
   http.get<{ windowDays: number; artists: TopArtistByTime[] }>('/admin/audience/artists');
+
+export interface HeatmapCell {
+  dayOfWeek: number;
+  hour: number;
+  streams: number;
+}
+
+export const fetchListeningHeatmap = (days = 28) =>
+  http.get<{ windowDays: number; cells: HeatmapCell[] }>(`/admin/audience/heatmap?days=${days}`);
+
+export interface RetentionStats {
+  cohortSize: number;
+  returnedDay1: number;
+  returnedDay7: number;
+  returnedDay30: number;
+}
+
+export const fetchRetentionStats = () => http.get<RetentionStats>('/admin/audience/retention');
+
+export interface RadioOpenStats {
+  windowDays: number;
+  total: number;
+  app: number;
+  web: number;
+}
+
+/** Uso de "Radio en vivo" (Radio Browser) — sólo un conteo, nunca qué estación: ver backend/src/routes/radio.ts. */
+export const fetchRadioOpenStats = () => http.get<RadioOpenStats>('/admin/audience/radio');
 
 export const fetchTopSearches = () =>
   http.get<{ windowDays: number; searches: TopSearch[]; withoutResults: TopSearch[] }>('/admin/audience/searches');

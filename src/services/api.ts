@@ -42,6 +42,11 @@ export interface PagedResult<T> {
   hasMore: boolean;
 }
 
+export interface RankedAlbum extends Album {
+  rank: number;
+  streams: number;
+}
+
 export interface ApiOptions {
   signal?: AbortSignal;
 }
@@ -103,6 +108,18 @@ export const api = {
     return items.map((t) => mapTrack(t));
   },
 
+  /**
+   * TODAS las canciones del artista de quien pregunta, en cualquier estado
+   * de moderación — a diferencia de `getArtistTracks`/`getTracks`, que sólo
+   * devuelven lo ya `APPROVED`. Es lo que alimenta "Tus lanzamientos" en el
+   * panel de artista: sin esto, una canción recién publicada era invisible
+   * (y no reproducible) hasta que un admin la aprobara.
+   */
+  async getMyTracks({ signal }: ApiOptions = {}): Promise<Track[]> {
+    const { tracks } = await http.get<{ tracks: BackendTrack[] }>('/artists/me/tracks', { signal });
+    return tracks.map((t) => mapTrack(t));
+  },
+
   // Álbumes
   async getAlbums({ signal }: ApiOptions = {}): Promise<Album[]> {
     const { items } = await paginatedGet<BackendAlbum>('/albums', 'albums', { limit: 50 }, { signal });
@@ -117,6 +134,15 @@ export const api = {
       if (isAbortError(error)) throw error;
       return undefined;
     }
+  },
+
+  /** "Top 100 álbumes" — reproducciones reales de los últimos 28 días, sin sencillos. */
+  async getTopAlbums(limit = 100, { signal }: ApiOptions = {}): Promise<RankedAlbum[]> {
+    const { albums } = await http.get<{ albums: (BackendAlbum & { rank: number; streams: number })[] }>(
+      `/recommendations/top-albums?limit=${limit}`,
+      { signal },
+    );
+    return albums.map((a) => ({ ...mapAlbum(a), rank: a.rank, streams: a.streams }));
   },
 
   // Playlists (públicas + propias del usuario logueado, según decide el backend)
@@ -156,6 +182,11 @@ export const api = {
   },
 
   // Explorar por género (etiqueta libre del artista — ver comentario en mappers/schema del backend)
+  /** Banner informativo configurable desde el panel (Ajustes → Anuncio) — no bloquea nada, a diferencia del modo mantenimiento. */
+  async getAnnouncement({ signal }: ApiOptions = {}): Promise<{ enabled: boolean; message: string }> {
+    return http.get<{ enabled: boolean; message: string }>('/config/announcement', { signal, skipAuth: true });
+  },
+
   async getGenres({ signal }: ApiOptions = {}): Promise<string[]> {
     const { items } = await paginatedGet<BackendArtist>('/artists', 'artists', { limit: 100 }, { signal });
     return Array.from(new Set(items.flatMap((a) => a.genres))).sort();
@@ -235,8 +266,8 @@ export const api = {
    * todavía), así que `locationLabel`/`usingGlobalFallback` siempre
    * reflejan eso — nada de simular un top "por país" que no existe.
    */
-  async getTrending({ signal }: ApiOptions = {}): Promise<TrendingChart> {
-    const { tracks } = await http.get<{ tracks: BackendTrendingTrack[] }>('/recommendations/trending?limit=20', { signal });
+  async getTrending(limit = 100, { signal }: ApiOptions = {}): Promise<TrendingChart> {
+    const { tracks } = await http.get<{ tracks: BackendTrendingTrack[] }>(`/recommendations/trending?limit=${limit}`, { signal });
     return { locationLabel: 'Global', topTracks: tracks.map(mapTrendingTrack) };
   },
 
@@ -261,6 +292,20 @@ export const api = {
     return artist ? mapArtist(artist) : null;
   },
 
+  /**
+   * Edita el perfil del propio artista, de verdad — a diferencia de
+   * `useArtistStore.updateProfile()` (un `set()` puramente local que nunca
+   * llegaba al servidor). Devuelve el perfil que quedó guardado, para que
+   * el store se sincronice con la versión real.
+   */
+  async updateMyArtistProfile(
+    patch: { name?: string; imageUrl?: string; bio?: string | null; genres?: string[] },
+    { signal }: ApiOptions = {},
+  ): Promise<Artist> {
+    const { artist } = await http.patch<{ artist: BackendArtist }>('/artists/me', patch, { signal });
+    return mapArtist(artist);
+  },
+
   /** Una sección concreta por slug — el destino de /seccion/:slug. */
   async getEditorialSectionBySlug(slug: string, { signal }: ApiOptions = {}): Promise<EditorialSection | null> {
     try {
@@ -273,6 +318,7 @@ export const api = {
         title: section.title,
         slug: section.slug,
         subtitle: section.subtitle ?? undefined,
+        kind: section.kind,
         layout: section.layout,
         tracks: section.tracks.map((t) => mapTrack(t)),
         albums: section.albums.map((a) => ({ id: a.id, title: a.title, coverUrl: a.coverUrl, artistName: a.artist.name })),
@@ -289,9 +335,16 @@ export const api = {
   /**
    * Portada completa en UNA petición.
    *
-   * Es el MISMO endpoint que usa la web. Que ambas pidan lo mismo es el
-   * punto: la composición de Inicio se decide en el servidor y los dos
-   * clientes muestran lo mismo sin ponerse de acuerdo.
+   * Es el MISMO endpoint que usa la web, y `hero`/`quickAccess`/`artists`
+   * se pintan igual en los dos clientes: lo que decide un curador desde el
+   * panel se ve en ambos sin desplegar nada.
+   *
+   * `rows` es la excepción: la app móvil ya trae "Escuchado recientemente",
+   * "Tendencias" (/charts) y "Novedades" con sus propios componentes, cada
+   * uno cargando y fallando por separado (ver el comentario al principio de
+   * `app/(tabs)/index.tsx`), así que pintar además las filas de acá
+   * duplicaría esas secciones. Se sigue mapeando para no bifurcar el tipo
+   * `HomeFeed` entre plataformas, pero el cliente móvil no la renderiza.
    */
   async getHomeFeed({ signal }: ApiOptions = {}): Promise<HomeFeed> {
     const raw = await http.get<BackendHomeFeed>('/home', { signal });
@@ -323,6 +376,7 @@ export const api = {
       title: section.title,
       slug: section.slug,
       subtitle: section.subtitle ?? undefined,
+      kind: section.kind,
       layout: section.layout,
       tracks: section.tracks.map((t) => mapTrack(t)),
       albums: section.albums.map((a) => ({
@@ -448,6 +502,7 @@ interface BackendEditorialSection {
   title: string;
   slug: string;
   subtitle: string | null;
+  kind: string;
   layout: 'CAROUSEL' | 'GRID' | 'HERO';
   tracks: BackendTrack[];
   albums: { id: string; title: string; coverUrl: string; artist: { name: string } }[];
@@ -460,6 +515,8 @@ export interface EditorialSection {
   title: string;
   slug: string;
   subtitle?: string;
+  /** NEW_RELEASES / TOP_TRACKS / TOP_ALBUMS / TOP_ARTISTS / MANUAL — ver el ícono simbólico de cada una en EditorialSections.tsx. */
+  kind: string;
   layout: 'CAROUSEL' | 'GRID' | 'HERO';
   tracks: Track[];
   albums: { id: string; title: string; coverUrl: string; artistName: string }[];

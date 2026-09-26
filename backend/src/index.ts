@@ -37,6 +37,8 @@ import promotionRoutes from './routes/promotions';
 import homeRoutes from './routes/home';
 import notificationRoutes from './routes/notifications';
 import genreRoutes from './routes/genres';
+import configRoutes from './routes/config';
+import radioRoutes from './routes/radio';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -185,6 +187,8 @@ app.use('/api/promotions', promotionRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/genres', genreRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/radio', radioRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use((_req, res) => {

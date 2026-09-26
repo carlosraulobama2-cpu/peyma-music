@@ -30,7 +30,7 @@ export function useTrendingChart(): UseTrendingChartResult {
     setError(null);
 
     api
-      .getTrending({ signal: controller.signal })
+      .getTrending(100, { signal: controller.signal })
       .then(setChart)
       .catch((err) => {
         if (isAbortError(err)) return;

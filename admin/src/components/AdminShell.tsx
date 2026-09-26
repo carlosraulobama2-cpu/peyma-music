@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Search, LogOut, Menu, X, PanelLeftClose, PanelLeft, ScrollText, Palette } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { CommandPalette } from './CommandPalette';
 import { AuditDrawer } from './AuditDrawer';
 import { ThemePicker } from './ThemePicker';
-import { NAV_SECTIONS } from '../lib/navigation';
+import { NAV_SECTIONS, NAV_GROUP_ORDER } from '../lib/navigation';
 
 /**
  * Shell del panel: barra lateral modular + cabecera.
@@ -56,7 +56,21 @@ interface AdminShellProps {
 
 export function AdminShell({ title, subtitle, actions, children }: AdminShellProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+
+  /**
+   * El ícono de la cabecera se resuelve solo, por ruta — ninguna página
+   * tiene que importar el suyo ni elegir un color. Con la ruta más
+   * específica que calce (no la primera, ni la exacta): una ficha de
+   * artista vive en `/artists/:id`, que no matchea `/artists` con `===`
+   * pero sí con `startsWith`, y de haber dos prefijos posibles gana el
+   * más largo para no confundir `/audit` con un futuro `/audit/algo`.
+   */
+  const currentSection = useMemo(() => {
+    const matches = NAV_SECTIONS.filter((section) => location.pathname.startsWith(section.to));
+    return matches.sort((a, b) => b.to.length - a.to.length)[0];
+  }, [location.pathname]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -163,7 +177,8 @@ export function AdminShell({ title, subtitle, actions, children }: AdminShellPro
       >
         <div className="flex items-center justify-between px-4 py-5">
           {!collapsed && (
-            <div className="text-base font-bold tracking-tight">
+            <div className="flex items-center gap-2 text-base font-bold tracking-tight">
+              <span className="size-2 rounded-full bg-brand" aria-hidden />
               Peyma <span className="font-normal text-muted">/ Admin</span>
             </div>
           )}
@@ -185,23 +200,52 @@ export function AdminShell({ title, subtitle, actions, children }: AdminShellPro
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-3">
-          {NAV_SECTIONS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setMobileNavOpen(false)}
-              title={collapsed ? label : undefined}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                  collapsed ? 'justify-center' : ''
-                } ${isActive ? 'bg-white/10 text-foreground' : 'text-muted hover:bg-white/5 hover:text-foreground'}`
-              }
-            >
-              <Icon size={18} aria-hidden />
-              {!collapsed && label}
-            </NavLink>
-          ))}
+        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-1">
+          {NAV_GROUP_ORDER.map((group) => {
+            const items = NAV_SECTIONS.filter((section) => section.group === group);
+            if (items.length === 0) return null;
+
+            return (
+              <div key={group} className="flex flex-col gap-1">
+                {/* La etiqueta de categoría es lo que convierte 18 secciones
+                    en cinco grupos de tres o cuatro — sin ella se lee como
+                    una sola lista larga y hay que leerla entera para
+                    encontrar algo. Colapsada no cabe, así que se omite. */}
+                {!collapsed && (
+                  <p className="mb-0.5 mt-1 px-3 text-[10px] font-bold uppercase tracking-wider text-muted/70">
+                    {group}
+                  </p>
+                )}
+                {items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={() => setMobileNavOpen(false)}
+                    title={collapsed ? label : undefined}
+                    className={({ isActive }) =>
+                      `group/nav relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                        collapsed ? 'justify-center' : ''
+                      } ${isActive ? 'bg-brand/10 text-brand' : 'text-muted hover:bg-white/5 hover:text-foreground'}`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {/* Barra de acento a la izquierda del ítem activo, en
+                            vez de sólo un fondo tintado — es la misma idea
+                            que el ícono con halo de color de Inicio (app y
+                            web), aplicada a una lista en vez de a tarjetas. */}
+                        {isActive && (
+                          <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-brand" aria-hidden />
+                        )}
+                        <Icon size={18} aria-hidden className={isActive ? 'text-brand' : ''} />
+                        {!collapsed && label}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="flex flex-col gap-2 border-t border-white/10 p-3">
@@ -261,9 +305,20 @@ export function AdminShell({ title, subtitle, actions, children }: AdminShellPro
               <Menu size={20} />
             </button>
 
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-xl font-bold">{title}</h1>
-              {subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {currentSection && (
+                <span
+                  className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: `${currentSection.accentColor}1F` }}
+                  aria-hidden
+                >
+                  <currentSection.icon size={18} color={currentSection.accentColor} strokeWidth={2.25} />
+                </span>
+              )}
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold">{title}</h1>
+                {subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+              </div>
             </div>
 
             {actions}

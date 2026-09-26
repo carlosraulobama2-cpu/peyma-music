@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Eye, EyeOff, Trash2, ArrowUp, ArrowDown, LayoutList } from 'lucide-react';
+import { Plus, Eye, EyeOff, Trash2, ArrowUp, ArrowDown, LayoutList, CalendarClock } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CoverImage } from '../components/CoverImage';
@@ -26,6 +26,20 @@ import {
  * el contenido YA RESUELTO por el backend, no una maqueta: es literalmente
  * lo que van a recibir los clientes.
  */
+
+/** ISO (UTC) → valor que entiende `<input type="datetime-local">`, en hora LOCAL del navegador. */
+function toLocalInputValue(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Valor de `<input type="datetime-local">` (hora local) → ISO para el backend, o `null` si se vació. */
+function fromLocalInputValue(value: string): string | null {
+  if (!value) return null;
+  return new Date(value).toISOString();
+}
 
 /** Genera el slug a partir del título, con las mismas reglas que valida el backend. */
 function slugify(title: string): string {
@@ -303,6 +317,42 @@ export function EditorialPage() {
                   >
                     <Trash2 size={15} />
                   </button>
+                </div>
+
+                {/* Ventana de programación — aparte de "Publicar": esa
+                    casilla sigue siendo "está lista", esto es CUÁNDO dentro
+                    de eso. Vacías (el caso normal) no cambian nada. */}
+                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-white/10 pt-3">
+                  <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-muted">
+                    <CalendarClock size={13} aria-hidden />
+                    Programar
+                  </span>
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Desde
+                    <input
+                      type="datetime-local"
+                      value={toLocalInputValue(section.publishAt)}
+                      onChange={(e) => patch(section, { publishAt: fromLocalInputValue(e.target.value) })}
+                      disabled={busyId === section.id}
+                      className="rounded-lg border border-white/15 bg-black/20 px-2 py-1 text-xs text-foreground outline-none focus:border-brand"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Hasta
+                    <input
+                      type="datetime-local"
+                      value={toLocalInputValue(section.unpublishAt)}
+                      onChange={(e) => patch(section, { unpublishAt: fromLocalInputValue(e.target.value) })}
+                      disabled={busyId === section.id}
+                      className="rounded-lg border border-white/15 bg-black/20 px-2 py-1 text-xs text-foreground outline-none focus:border-brand"
+                    />
+                  </label>
+                  {(section.publishAt || section.unpublishAt) && (
+                    <span className="text-[11px] text-muted">
+                      {section.publishAt && new Date(section.publishAt) > new Date() && 'Todavía no empezó a salir. '}
+                      {section.unpublishAt && new Date(section.unpublishAt) <= new Date() && 'Ya terminó su ventana.'}
+                    </span>
+                  )}
                 </div>
               </div>
             ))

@@ -8,6 +8,13 @@ import { useArtistStore, usePlayerStore } from '../../src/store';
 import { EmptyState, MiniBarChart, Button } from '../../src/components';
 import { useTheme, useThemedStyles, spacing, typography, radius, layout, type Theme } from '../../src/theme';
 import { formatNumber } from '../../src/utils';
+import { getAuthToken } from '../../src/services/httpClient';
+import type { Track } from '../../src/types';
+
+const RELEASE_STATUS_LABEL: Record<'PENDING_REVIEW' | 'REJECTED', string> = {
+  PENDING_REVIEW: 'Pendiente',
+  REJECTED: 'Rechazada',
+};
 
 export default function StudioScreen() {
   const insets = useSafeAreaInsets();
@@ -20,6 +27,24 @@ export default function StudioScreen() {
   const releases = useArtistStore((s) => s.releases);
   const refreshStats = useArtistStore((s) => s.refreshStats);
   const play = usePlayerStore((s) => s.play);
+
+  /**
+   * Reproduce una canción propia con el token de vista previa.
+   *
+   * Todo lo de esta pantalla es del propio artista, apruebe o no lo haya
+   * aprobado todavía un admin, así que siempre se manda: el backend sólo lo
+   * necesita cuando la pista no está aprobada, y lo ignora si ya lo está.
+   * Sin esto, tocar "play" en una publicación recién hecha pedía
+   * `/tracks/:id/stream` sin credenciales y el servidor respondía 404 —
+   * la canción "no sonaba" aunque se hubiera subido bien.
+   */
+  const playOwnTrack = useCallback(
+    async (track: Track, queue: Track[]) => {
+      const token = await getAuthToken();
+      void play(track, queue, token ?? undefined);
+    },
+    [play],
+  );
 
   // Se recargan al entrar en la pestaña, no sólo al tirar de la pantalla: son
   // datos que cambian solos (los ponen los oyentes) y el panel se abre para
@@ -111,7 +136,7 @@ export default function StudioScreen() {
               <Pressable
                 key={entry.trackId}
                 disabled={!playable}
-                onPress={() => playable && play(playable, releases)}
+                onPress={() => playable && void playOwnTrack(playable, releases)}
                 style={({ pressed }) => [styles.trackRow, pressed && playable && styles.trackRowPressed]}
               >
                 <Text style={styles.trackRank}>{index + 1}</Text>
@@ -138,11 +163,20 @@ export default function StudioScreen() {
           releases.map((track) => (
             <Pressable
               key={track.id}
-              onPress={() => play(track, releases)}
+              onPress={() => void playOwnTrack(track, releases)}
               style={({ pressed }) => [styles.trackRow, pressed && styles.trackRowPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Reproducir ${track.title}${track.status && track.status !== 'APPROVED' ? `, ${RELEASE_STATUS_LABEL[track.status]}` : ''}`}
             >
               <Image source={track.coverUrl} style={styles.trackCover} contentFit="cover" />
               <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
+              {track.status && track.status !== 'APPROVED' && (
+                <View style={[styles.statusBadge, track.status === 'REJECTED' && styles.statusBadgeRejected]}>
+                  <Text style={[styles.statusBadgeText, track.status === 'REJECTED' && styles.statusBadgeTextRejected]}>
+                    {RELEASE_STATUS_LABEL[track.status]}
+                  </Text>
+                </View>
+              )}
               <Ionicons name="play-circle-outline" size={22} color={colors.text.secondary} />
             </Pressable>
           ))
@@ -265,6 +299,23 @@ const makeStyles = ({ colors }: Theme) => ({
     color: colors.text.secondary,
     fontFamily: typography.family.regular,
     fontSize: typography.size.xs,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface[300],
+  },
+  statusBadgeRejected: {
+    backgroundColor: colors.semantic.error + '26',
+  },
+  statusBadgeText: {
+    color: colors.text.secondary,
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.xs - 1,
+  },
+  statusBadgeTextRejected: {
+    color: colors.semantic.error,
   },
   releasesHeader: {
     flexDirection: 'row' as const,

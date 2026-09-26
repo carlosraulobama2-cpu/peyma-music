@@ -28,6 +28,7 @@ import {
   querySchema,
   idParamSchema,
   presignUploadSchema,
+  creditDraftSchema,
 } from '../schemas/validation';
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors';
 import { storageService } from '../services/storage';
@@ -393,7 +394,7 @@ router.post('/:id/analyze', authMiddleware, async (req: AuthRequest, res: Respon
 router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { id } = idParamSchema.parse(req.params);
   const existing = await requireEditableUpload(id, req.user!.id);
-  const { albumId, genreOverrideId, lyricsSyncedDraft, ...rest } = updateUploadMetadataSchema.parse(req.body);
+  const { albumId, genreOverrideId, lyricsSyncedDraft, creditsDraft, ...rest } = updateUploadMetadataSchema.parse(req.body);
 
   if (albumId) {
     const album = await prisma.album.findUnique({ where: { id: albumId } });
@@ -420,6 +421,9 @@ router.patch('/:id', authMiddleware, async (req: AuthRequest, res: Response) => 
       ...(lyricsSyncedDraft !== undefined
         ? { lyricsSyncedDraft: lyricsSyncedDraft ?? Prisma.JsonNull }
         : {}),
+      ...(creditsDraft !== undefined
+        ? { creditsDraft: creditsDraft ?? Prisma.JsonNull }
+        : {}),
     },
     ...UPLOAD_WITH_DETAILS,
   });
@@ -441,6 +445,11 @@ router.post('/:id/publish', authMiddleware, async (req: AuthRequest, res: Respon
 
   const analysis = upload.analysisDraft as unknown as AudioAnalysisResult | null;
   if (!analysis) throw new BadRequestError('No hay un análisis de audio para publicar');
+
+  // Reparseado y no un cast directo: `creditsDraft` es un `Json` de Postgres
+  // (sin forma garantizada a nivel de tipos) y esto es lo último que lo toca
+  // antes de convertirse en filas reales de `TrackCredit`.
+  const credits = z.array(creditDraftSchema).parse(upload.creditsDraft ?? []);
 
   /**
    * El álbum del sencillo se crea FUERA de la transacción.
@@ -503,8 +512,20 @@ router.post('/:id/publish', authMiddleware, async (req: AuthRequest, res: Respon
         ...(upload.lyricsPlainDraft || upload.lyricsSyncedDraft
           ? { lyrics: { create: { plainText: upload.lyricsPlainDraft, synced: upload.lyricsSyncedDraft ?? undefined } } }
           : {}),
+        ...(credits.length > 0
+          ? {
+              credits: {
+                create: credits.map((credit) => ({
+                  role: credit.role,
+                  name: credit.name,
+                  artistId: credit.artistId ?? null,
+                  splitPercent: credit.splitPercent ?? null,
+                })),
+              },
+            }
+          : {}),
       },
-      include: { artist: true, album: true, analysis: true, lyrics: true },
+      include: { artist: true, album: true, analysis: true, lyrics: true, credits: true },
     });
 
     await tx.trackUpload.update({

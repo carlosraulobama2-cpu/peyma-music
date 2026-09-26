@@ -1,11 +1,14 @@
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { usePlayerStore, useSheetStore } from '../../store';
 import { useRecommendations } from '../../hooks';
 import { MediaCard } from './MediaCard';
+import { SectionHeader } from './SectionHeader';
 import { Skeleton } from '../Skeleton';
 import { EmptyState } from '../EmptyState';
-import { useThemedStyles, spacing, typography, type Theme } from '../../theme';
+import { useThemedStyles, spacing, type Theme } from '../../theme';
+
+const FOR_YOU_TINT = '#B478FF';
 
 /**
  * "Especialmente para ti" — fusiona lo que el prompt original pedía dos
@@ -46,10 +49,12 @@ export function ForYouSection() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Especialmente para ti</Text>
-      <Text style={styles.subtitle}>
-        {isColdStart ? 'Escucha y dale "me gusta" para que esto se ajuste a ti' : 'Basado en lo que más escuchas'}
-      </Text>
+      <SectionHeader
+        icon="sparkles"
+        title="Especialmente para ti"
+        subtitle={isColdStart ? 'Escucha y dale "me gusta" para que esto se ajuste a ti' : 'Basado en lo que más escuchas'}
+        accentColor={FOR_YOU_TINT}
+      />
       <FlashList
         data={items}
         horizontal
@@ -77,23 +82,9 @@ export function ForYouSection() {
   );
 }
 
-const makeStyles = ({ colors }: Theme) => ({
+const makeStyles = (_theme: Theme) => ({
   container: {
     marginBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text.primary,
-    fontFamily: typography.family.bold,
-    fontSize: typography.size.lg,
-    paddingHorizontal: spacing.lg,
-  },
-  subtitle: {
-    color: colors.text.secondary,
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.xs,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    marginTop: 2,
   },
   listContent: {
     paddingHorizontal: spacing.lg,

@@ -15,6 +15,7 @@ import type { Track, RepeatMode, PlayerState } from '../types';
 import { useLibraryStore } from './libraryStore';
 import { shuffle } from '../utils';
 import { startStream, updateStreamPosition, finishStream } from '../services/streamTracker';
+import { isRadioTrack } from '../services/radioApi';
 
 const REPEAT_TO_NATIVE: Record<RepeatMode, NativeRepeatMode> = {
   off: NativeRepeatMode.Off,
@@ -40,21 +41,36 @@ let sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
  * moderación (una pista no aprobada deja de sonar) y soporta `Range` para
  * buscar sin descargar el archivo entero. Si no hay API configurada, se cae
  * a la URL original para no dejar la app sin audio.
+ *
+ * `previewToken`: el reproductor nativo no manda la cabecera
+ * `Authorization`, así que para escuchar una pista TODAVÍA no aprobada (la
+ * vista previa del propio artista sobre su subida, ver `mis-canciones.tsx`)
+ * el token va en la URL — el backend acepta esto sólo en esta ruta, a
+ * propósito (ver `optionalAuthFromHeaderOrQuery`). Para una pista pública
+ * normal no hace falta y no se manda.
  */
-function resolveStreamUrl(track: Track): string {
+function resolveStreamUrl(track: Track, previewToken?: string): string {
+  // Una estación de radio no es una pista del catálogo: no tiene fila en
+  // `Track` que moderar ni proxy que atravesar, así que suena directo desde
+  // la URL que dio Radio Browser.
+  if (isRadioTrack(track)) return track.audioUrl;
+
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  return apiUrl ? `${apiUrl}/tracks/${track.id}/stream` : track.audioUrl;
+  if (!apiUrl) return track.audioUrl;
+  const url = `${apiUrl}/tracks/${track.id}/stream`;
+  return previewToken ? `${url}?token=${encodeURIComponent(previewToken)}` : url;
 }
 
-export function toTrackPlayerTrack(track: Track): AddTrack {
+export function toTrackPlayerTrack(track: Track, previewToken?: string): AddTrack {
   return {
     id: track.id,
-    url: resolveStreamUrl(track),
+    url: resolveStreamUrl(track, previewToken),
     title: track.title,
     artist: track.artist,
     album: track.album,
     artwork: track.coverUrl,
     duration: track.duration,
+    ...(isRadioTrack(track) ? { isLiveStream: true } : {}),
   };
 }
 
@@ -64,7 +80,30 @@ interface PlayerStore extends PlayerState {
   /** `null` si no hay temporizador de apagado activo. */
   sleepTimerEndsAt: number | null;
 
-  play: (track: Track, queue?: Track[]) => Promise<void>;
+  /**
+   * `true` mientras se está aplicando un comando que llegó por Peyma
+   * Connect (ver `usePeymaConnect`). El efecto que emite estado a los
+   * otros dispositivos lo consulta para NO reenviar a la red algo que
+   * acaba de llegar de la red — la mitad cliente de la supresión de eco.
+   */
+  isRemoteCommand: boolean;
+  /** Qué otro dispositivo está reproduciendo, si alguno — alimenta "Sonando en …". */
+  remoteDeviceName: string | null;
+
+  /**
+   * Título ICY de la estación de radio actual ("Artista - Canción", tal
+   * cual lo anuncia la propia emisora) — `null` si no hay radio sonando o si
+   * esta estación en particular no manda esa metadata. Lo llena
+   * `useTrackPlayer()` desde el evento nativo del reproductor; ver
+   * `radioApi.ts` sobre por qué no se puede pedir aparte.
+   */
+  radioNowPlaying: string | null;
+
+  /**
+   * `previewToken`: sólo lo pasa la pantalla "Mis canciones" al escuchar una
+   * subida propia todavía no aprobada — ver `resolveStreamUrl`.
+   */
+  play: (track: Track, queue?: Track[], previewToken?: string) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   next: () => Promise<void>;
@@ -86,11 +125,23 @@ interface PlayerStore extends PlayerState {
   setIsPlaying: (isPlaying: boolean) => void;
   setIsBuffering: (isBuffering: boolean) => void;
   setCurrentTrack: (track: Track | null, index?: number) => void;
+  setRadioNowPlaying: (title: string | null) => void;
   toggleCrossfade: () => void;
   setCrossfadeDuration: (durationMs: number) => void;
 
   /** `minutes: null` cancela el temporizador activo. */
   setSleepTimer: (minutes: number | null) => void;
+
+  /**
+   * Ejecuta `mutation` con la bandera de "viene de Peyma Connect" activada.
+   * Acepta mutaciones async (a diferencia de la web, acá `pause`/`resume`/
+   * `seekTo`/etc. son promesas que llaman al player nativo antes de tocar
+   * el store) y no la baja hasta que terminen — si no, el `set()` interno
+   * de la acción llegaría con la bandera ya en `false` y se reenviaría al
+   * resto de dispositivos el comando que acaban de mandar ellos.
+   */
+  applyRemote: (mutation: () => void | Promise<void>) => void;
+  setRemoteDeviceName: (name: string | null) => void;
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -108,8 +159,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   crossfadeDurationMs: 5000,
   sleepTimerEndsAt: null,
   playbackError: null,
+  isRemoteCommand: false,
+  remoteDeviceName: null,
+  radioNowPlaying: null,
 
-  play: async (track, queueOverride) => {
+  play: async (track, queueOverride, previewToken) => {
     const newQueue = queueOverride ?? [track];
     const index = Math.max(
       0,
@@ -119,15 +173,25 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({ isBuffering: true, playbackError: null });
     try {
       await TrackPlayer.reset();
-      await TrackPlayer.add(newQueue.map(toTrackPlayerTrack));
+      await TrackPlayer.add(newQueue.map((t) => toTrackPlayerTrack(t, previewToken)));
       await TrackPlayer.skip(index);
       await TrackPlayer.play();
 
-      useLibraryStore.getState().addToRecentlyPlayed(track);
-      // Alimenta oyentes mensuales, tendencias y las horas escuchadas del
-      // panel. Hasta ahora la app no registraba nada y todo el uso móvil
-      // era invisible en las métricas.
-      startStream(track.id);
+      // Una radio no es una pista del catálogo: no tiene id real en `Track`,
+      // así que ni entra al historial ("recientes" es para lo que sí se
+      // puede volver a abrir en su ficha) ni se registra como reproducción
+      // — el backend la rechazaría (`/streams/log` espera un trackId real).
+      // Sí hay que cerrar la escucha anterior si venía de una canción real:
+      // `startStream` lo hace solo, pero acá no se llama.
+      if (isRadioTrack(track)) {
+        await finishStream();
+      } else if (!previewToken) {
+        useLibraryStore.getState().addToRecentlyPlayed(track);
+        // Alimenta oyentes mensuales, tendencias y las horas escuchadas del
+        // panel. Hasta ahora la app no registraba nada y todo el uso móvil
+        // era invisible en las métricas.
+        startStream(track.id);
+      }
 
       set({
         currentTrack: track,
@@ -136,6 +200,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isPlaying: true,
         isBuffering: false,
         progress: 0,
+        // Se limpia acá y no se vuelve a tocar hasta que llegue el próximo
+        // evento nativo: si la estación no manda metadata ICY, "sonando
+        // ahora" debe quedarse vacío, no arrastrar el título de la anterior.
+        radioNowPlaying: null,
       });
     } catch (error) {
       console.error('[playerStore] Error al reproducir:', error);
@@ -218,7 +286,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const nextUpcoming = isShuffled ? upcoming : shuffle(upcoming);
       const newQueue = [...played, ...nextUpcoming];
 
-      await TrackPlayer.setQueue(newQueue.map(toTrackPlayerTrack));
+      await TrackPlayer.setQueue(newQueue.map((t) => toTrackPlayerTrack(t)));
       await TrackPlayer.skip(queueIndex);
 
       set({ isShuffled: !isShuffled, queue: newQueue });
@@ -321,6 +389,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   setIsBuffering: (isBuffering) => set({ isBuffering }),
   setCurrentTrack: (track, index) =>
     set((state) => ({ currentTrack: track, queueIndex: index ?? state.queueIndex })),
+  setRadioNowPlaying: (title) => set({ radioNowPlaying: title }),
   toggleCrossfade: () => set((state) => ({ isCrossfadeEnabled: !state.isCrossfadeEnabled })),
   setCrossfadeDuration: (durationMs) => set({ crossfadeDurationMs: durationMs }),
 
@@ -345,4 +414,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     );
     set({ sleepTimerEndsAt: Date.now() + minutes * 60_000 });
   },
+
+  applyRemote: (mutation) => {
+    set({ isRemoteCommand: true });
+    const result = mutation();
+    if (result instanceof Promise) {
+      result.finally(() => set({ isRemoteCommand: false }));
+    } else {
+      set({ isRemoteCommand: false });
+    }
+  },
+
+  setRemoteDeviceName: (name) => set({ remoteDeviceName: name }),
 }));

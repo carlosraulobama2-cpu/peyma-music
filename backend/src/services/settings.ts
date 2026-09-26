@@ -90,6 +90,38 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     defaultValue: '40',
     group: 'Subidas',
   },
+  {
+    key: 'alerts.moderationQueueThreshold',
+    label: 'Umbral de la cola de moderación',
+    description: 'Al llegar o superar este número de pistas pendientes, el Tablero las resalta como crítico en vez de solo "hay pendientes".',
+    type: 'number',
+    defaultValue: '20',
+    group: 'Alertas',
+  },
+  {
+    key: 'alerts.reportsQueueThreshold',
+    label: 'Umbral de denuncias abiertas',
+    description: 'Al llegar o superar este número de denuncias sin revisar, el Tablero las resalta como crítico.',
+    type: 'number',
+    defaultValue: '5',
+    group: 'Alertas',
+  },
+  {
+    key: 'announcement.enabled',
+    label: 'Anuncio activo',
+    description: 'A diferencia del modo mantenimiento, NO bloquea nada: es un banner informativo (una nueva función, un aviso) que se puede cerrar.',
+    type: 'boolean',
+    defaultValue: 'false',
+    group: 'Anuncio',
+  },
+  {
+    key: 'announcement.message',
+    label: 'Mensaje del anuncio',
+    description: 'Lo que se muestra en el banner mientras el anuncio esté activo.',
+    type: 'string',
+    defaultValue: '',
+    group: 'Anuncio',
+  },
 ] as const;
 
 const DEFINITIONS_BY_KEY = new Map(SETTING_DEFINITIONS.map((definition) => [definition.key, definition]));

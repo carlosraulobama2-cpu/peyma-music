@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ShieldCheck, User as UserIcon, Mic2, Download } from 'lucide-react';
+import { ShieldCheck, User as UserIcon, Mic2, Download, LogIn, Copy, Check } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
-import { fetchUsers, setUserRole, type AdminUser, type UserRole } from '../lib/users';
+import { fetchUsers, setUserRole, impersonateUser, type AdminUser, type UserRole } from '../lib/users';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
+
+/** De dónde sirve la web pública — el mismo origen que consulta el panel, menos "/admin". Ver .env.local. */
+const WEB_URL = import.meta.env.VITE_WEB_URL ?? 'http://localhost:3001';
 
 /**
  * Gestión de cuentas.
@@ -29,6 +32,8 @@ export function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = useCallback((term: string) => {
     setLoading(true);
@@ -57,6 +62,28 @@ export function UsersPage() {
       setError(err instanceof Error ? err.message : 'No se pudo cambiar el rol.');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  /**
+   * Copia un enlace de soporte que abre la web YA LOGUEADA como este
+   * usuario, con el token de 1 hora que emite el backend. No abrimos la
+   * pestaña nosotros: quien hace soporte suele querer pegarlo en su propio
+   * navegador o mandárselo a otra persona del equipo.
+   */
+  const copyImpersonationLink = async (user: AdminUser) => {
+    setImpersonatingId(user.id);
+    setError(null);
+    try {
+      const ticket = await impersonateUser(user.id);
+      const link = `${WEB_URL}/impersonate?token=${encodeURIComponent(ticket.token)}`;
+      await navigator.clipboard.writeText(link);
+      setCopiedId(user.id);
+      setTimeout(() => setCopiedId((current) => (current === user.id ? null : current)), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el acceso.');
+    } finally {
+      setImpersonatingId(null);
     }
   };
 
@@ -159,6 +186,28 @@ export function UsersPage() {
                     </option>
                   ))}
                 </select>
+
+                {user.role !== 'ADMIN' && (
+                  <button
+                    type="button"
+                    onClick={() => copyImpersonationLink(user)}
+                    disabled={impersonatingId === user.id}
+                    title="Copia un enlace que abre la web logueada como esta cuenta, por 1 hora — para soporte"
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-white hover:text-foreground disabled:opacity-40"
+                  >
+                    {copiedId === user.id ? (
+                      <>
+                        <Check size={13} aria-hidden />
+                        Copiado
+                      </>
+                    ) : (
+                      <>
+                        {impersonatingId === user.id ? <Copy size={13} aria-hidden /> : <LogIn size={13} aria-hidden />}
+                        Entrar como
+                      </>
+                    )}
+                  </button>
+                )}
               </li>
             );
           })}

@@ -13,9 +13,40 @@
  */
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../prismaClient';
+import { getRankedArtists } from './artistRanking';
 
 /** Misma ventana que oyentes mensuales y trending — un solo criterio en toda la plataforma. */
 const ROLLING_WINDOW_DAYS = 28;
+/**
+ * Bajo este número de OYENTES DISTINTOS en la ventana, una pista o álbum no
+ * cuenta como "top" para las secciones automáticas — sin este piso, algo
+ * recién subido con una sola reproducción (la del propio artista) podía
+ * ganar "Lo más escuchado" o "Mejores álbumes" el mismo día que se publica.
+ */
+export const MIN_LISTENERS_TO_FEATURE = 5;
+
+/**
+ * Ventana de programación: sin `publishAt`/`unpublishAt` (el caso normal,
+ * de siempre) no filtra nada — sólo entra en juego cuando el curador puso
+ * una fecha. `isPublished` sigue siendo obligatorio aparte: esto NO
+ * reemplaza esa casilla, sólo acota cuándo dentro de "publicada" cuenta
+ * como visible ahora mismo.
+ */
+/**
+ * Función y no una constante: `new Date()` tiene que ser el momento de
+ * CADA consulta, no el del arranque del proceso — con una constante, un
+ * servidor que lleva días corriendo compararía siempre contra la hora en
+ * que arrancó.
+ */
+function inScheduleWindow(): Prisma.EditorialSectionWhereInput {
+  const now = new Date();
+  return {
+    AND: [
+      { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+      { OR: [{ unpublishAt: null }, { unpublishAt: { gt: now } }] },
+    ],
+  };
+}
 
 /** Un artista bloqueado y una pista no aprobada no salen en ninguna sección. */
 const PUBLIC_TRACK_WHERE: Prisma.TrackWhereInput = {
@@ -68,15 +99,24 @@ function windowStart(): Date {
   return new Date(Date.now() - ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 }
 
-/** IDs más reproducidos en la ventana, en orden. */
+/**
+ * IDs más reproducidos en la ventana, en orden — sólo entre las que
+ * escuchó al menos `MIN_LISTENERS_TO_FEATURE` personas distintas.
+ *
+ * SQL crudo y no `groupBy`: Prisma no puede expresar `COUNT(DISTINCT
+ * userId)` ni un `HAVING` sobre eso, y las dos cosas hacen falta para el
+ * piso de oyentes distintos.
+ */
 async function topTrackIds(limit: number): Promise<string[]> {
-  const rows = await prisma.streamLog.groupBy({
-    by: ['trackId'],
-    where: { playedAt: { gte: windowStart() } },
-    _count: { _all: true },
-    orderBy: { _count: { trackId: 'desc' } },
-    take: limit,
-  });
+  const rows = await prisma.$queryRaw<{ trackId: string }[]>`
+    SELECT s."trackId"
+      FROM "StreamLog" s
+     WHERE s."playedAt" >= ${windowStart()}
+     GROUP BY s."trackId"
+    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
+     ORDER BY COUNT(*) DESC
+     LIMIT ${limit}
+  `;
   return rows.map((row) => row.trackId);
 }
 
@@ -122,7 +162,12 @@ async function resolveTopAlbums(limit: number) {
      WHERE s."playedAt" >= ${windowStart()}
        AND t."status" = 'APPROVED'
        AND a."isBlocked" = false
+       -- Un sencillo es un álbum autogenerado de una sola pista (ver
+       -- routes/uploads.ts): no es un ÁLBUM para efectos de "Mejores
+       -- álbumes", aunque su única canción esté sonando mucho.
+       AND (SELECT COUNT(*) FROM "Track" t2 WHERE t2."albumId" = t."albumId") > 1
      GROUP BY t."albumId"
+    HAVING COUNT(DISTINCT s."userId") >= ${MIN_LISTENERS_TO_FEATURE}
      ORDER BY streams DESC
      LIMIT ${limit}
   `;
@@ -133,19 +178,10 @@ async function resolveTopAlbums(limit: number) {
 }
 
 async function resolveTopArtists(limit: number) {
-  // Por OYENTES distintos, no por reproducciones: si no, un solo usuario
-  // dejando una canción en bucle pondría a su artista favorito arriba.
-  const rows = await prisma.$queryRaw<{ artistId: string }[]>`
-    SELECT s."artistId", COUNT(DISTINCT s."userId") AS listeners
-      FROM "StreamLog" s
-      JOIN "Artist" a ON a."id" = s."artistId"
-     WHERE s."playedAt" >= ${windowStart()}
-       AND a."isBlocked" = false
-     GROUP BY s."artistId"
-     ORDER BY listeners DESC
-     LIMIT ${limit}
-  `;
-  const ids = rows.map((row) => row.artistId);
+  // Ranking compuesto (oyentes + reproducciones + seguidores) — ver
+  // artistRanking.ts para el porqué de los pesos.
+  const ranked = await getRankedArtists(windowStart(), limit, MIN_LISTENERS_TO_FEATURE);
+  const ids = ranked.map((row) => row.artistId);
   if (ids.length === 0) return [];
   const artists = await prisma.artist.findMany({ where: { id: { in: ids } }, select: ARTIST_CARD_SELECT });
   return sortByIdOrder(artists, ids);
@@ -209,7 +245,7 @@ async function resolveOne(section: SectionRow): Promise<ResolvedSection> {
  */
 export async function getPublishedSections(): Promise<ResolvedSection[]> {
   const sections = await prisma.editorialSection.findMany({
-    where: { isPublished: true },
+    where: { isPublished: true, ...inScheduleWindow() },
     orderBy: { position: 'asc' },
     include: { items: true },
   });
@@ -231,7 +267,7 @@ export async function getPublishedSections(): Promise<ResolvedSection[]> {
  */
 export async function getPublishedSectionBySlug(slug: string): Promise<ResolvedSection | null> {
   const section = await prisma.editorialSection.findFirst({
-    where: { slug, isPublished: true },
+    where: { slug, isPublished: true, ...inScheduleWindow() },
     include: { items: true },
   });
   return section ? resolveOne(section) : null;

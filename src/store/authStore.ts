@@ -9,8 +9,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { User, AccountType } from '../types';
+import type { User, AccountType, LocationConsentValue } from '../types';
 import { http, ApiError, getAuthToken, setAuthToken, clearAuthToken, onUnauthorized } from '../services/httpClient';
+import { disconnectSocket } from '../services/socketService';
 import { useLibraryStore } from './libraryStore';
 
 export class AuthError extends Error {}
@@ -41,6 +42,7 @@ interface BackendUser {
   /** 'USER' | 'ARTIST' | 'ADMIN' — lo manda el backend en toda respuesta de sesión. */
   role: string;
   createdAt: string;
+  locationConsent: LocationConsentValue;
 }
 
 interface AuthStore {
@@ -122,6 +124,7 @@ function mapBackendUser(backendUser: BackendUser, previousAccountType?: AccountT
     favoriteGenres: backendUser.favoriteGenres,
     createdAt: backendUser.createdAt,
     accountType: esArtistaSegunServidor ? 'artist' : (previousAccountType ?? 'listener'),
+    locationConsent: backendUser.locationConsent,
   };
 }
 
@@ -246,6 +249,7 @@ export const useAuthStore = create<AuthStore>()(
           console.error('[authStore] Logout en el servidor falló (se cierra igual localmente):', error);
         }
         await clearAuthToken();
+        disconnectSocket();
         set({ user: null, isAuthenticated: false, token: null });
         dropSessionLibrary();
       },

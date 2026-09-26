@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { http } from "../lib/httpClient";
 
 /**
@@ -49,13 +50,33 @@ export function ExploreCategories() {
     };
   }, []);
 
-  if (genres !== null && genres.length === 0) return null;
-
   return (
     <section className="mt-10">
       <h2 className="mb-4 text-xl font-bold sm:text-2xl">Explorar todo</h2>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {/* Rankings globales, fijos — no dependen de si hay géneros con catálogo. */}
+        <Link
+          href="/top-canciones"
+          title="Ver Top 100 canciones"
+          className="relative flex aspect-[16/9] flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-amber-500 to-orange-700 p-3 text-left transition-transform hover:scale-[1.03]"
+        >
+          <span className="relative z-10 block text-base font-extrabold leading-tight text-white drop-shadow">
+            Top 100 canciones
+          </span>
+          <span className="relative z-10 block text-[11px] font-semibold text-white/70">Ranking global</span>
+        </Link>
+        <Link
+          href="/top-albumes"
+          title="Ver Top 100 álbumes"
+          className="relative flex aspect-[16/9] flex-col justify-between overflow-hidden rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-700 p-3 text-left transition-transform hover:scale-[1.03]"
+        >
+          <span className="relative z-10 block text-base font-extrabold leading-tight text-white drop-shadow">
+            Top 100 álbumes
+          </span>
+          <span className="relative z-10 block text-[11px] font-semibold text-white/70">Ranking global</span>
+        </Link>
+
         {genres === null
           ? [...Array(8)].map((_, i) => (
               <div key={i} className="aspect-[16/9] animate-pulse rounded-lg bg-surface-raised" />

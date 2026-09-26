@@ -6,27 +6,57 @@ export interface SearchArtist extends TrackArtist {
   monthlyListeners: number;
 }
 
+export interface SearchPlaylist {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  ownerName: string;
+  trackCount: number;
+}
+
+interface BackendSearchPlaylist {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  owner: { displayName: string };
+  _count: { tracks: number };
+}
+
 export interface SearchResults {
   tracks: CatalogTrack[];
   artists: SearchArtist[];
   albums: CatalogAlbum[];
+  playlists: SearchPlaylist[];
 }
 
 /**
  * El backend no tiene un endpoint `/search` único — cada recurso ya acepta
- * `?search=`, así que se consultan los tres en paralelo. Mismo criterio que
- * usa `api.search()` en la app móvil, para que los resultados coincidan.
+ * `?search=`, así que se consultan los cuatro en paralelo. Mismo criterio
+ * que usa `api.search()` en la app móvil (incluidas las playlists), para
+ * que los resultados coincidan.
  */
 export async function search(query: string): Promise<SearchResults> {
   const q = query.trim();
-  if (!q) return { tracks: [], artists: [], albums: [] };
+  if (!q) return { tracks: [], artists: [], albums: [], playlists: [] };
   const encoded = encodeURIComponent(q);
 
-  const [tracks, artists, albums] = await Promise.all([
+  const [tracks, artists, albums, playlists] = await Promise.all([
     http.get<{ tracks: CatalogTrack[] }>(`/tracks?search=${encoded}&limit=20`),
     http.get<{ artists: SearchArtist[] }>(`/artists?search=${encoded}&limit=12`),
     http.get<{ albums: CatalogAlbum[] }>(`/albums?search=${encoded}&limit=12`),
+    http.get<{ playlists: BackendSearchPlaylist[] }>(`/playlists?search=${encoded}&limit=12`),
   ]);
 
-  return { tracks: tracks.tracks, artists: artists.artists, albums: albums.albums };
+  return {
+    tracks: tracks.tracks,
+    artists: artists.artists,
+    albums: albums.albums,
+    playlists: playlists.playlists.map((p) => ({
+      id: p.id,
+      title: p.title,
+      coverUrl: p.coverUrl,
+      ownerName: p.owner.displayName,
+      trackCount: p._count.tracks,
+    })),
+  };
 }

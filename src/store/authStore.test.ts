@@ -41,7 +41,7 @@ jest.mock('../services/httpClient', () => {
 });
 
 /** Los callbacks que el store registró con `onUnauthorized`. */
-const escuchasNoAutorizado: Array<() => void> = [];
+const escuchasNoAutorizado: (() => void)[] = [];
 
 // El store de biblioteca se toca al adoptar/soltar la sesión; aquí no
 // interesa y arrastra media app si se carga de verdad.

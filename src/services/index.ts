@@ -1,7 +1,30 @@
-export type { EditorialSection, HomeFeed } from './api';
+export type { EditorialSection, HomeFeed, RankedAlbum } from './api';
 export { api, isAbortError, type ApiOptions, type PagedResult } from './api';
 export { setupTrackPlayer, playbackService } from './trackPlayerService';
 export { setLocationConsent, getCoarseCoords } from './locationConsent';
-export { uploadTrack, UPLOAD_STEPS, type LocalFile, type UploadStep } from './uploadPipeline';
+export {
+  uploadTrack,
+  uploadRelease,
+  UPLOAD_STEPS,
+  CREDIT_ROLE_LABEL,
+  type LocalFile,
+  type UploadStep,
+  type CreditDraft,
+  type CreditRole,
+  type CreatedAlbum,
+  type ReleaseTrackInput,
+} from './uploadPipeline';
 export { resolveAudioType, describeAudioRejection } from './fileTypes';
 export { fetchNotifications, markAllNotificationsRead, markNotificationRead, NOTIFICATION_ICONS, type ServerNotification } from './notifications';
+export {
+  searchStations,
+  getTopStations,
+  registerStationClick,
+  logRadioOpen,
+  getAutoRadioPlaylists,
+  stationToTrack,
+  isRadioTrack,
+  RADIO_TRACK_ID_PREFIX,
+  type RadioStation,
+  type RadioPlaylist,
+} from './radioApi';

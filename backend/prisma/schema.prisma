@@ -87,6 +87,17 @@ enum CreditRole {
   MASTERING_ENGINEER
 }
 
+/// Qué es un lanzamiento: un sencillo se crea solo al publicar una pista sin
+/// álbum elegido (ver routes/uploads.ts) — nunca lo elige quien sube. EP y
+/// ÁLBUM sí los elige el artista al crear el álbum antes de subir sus
+/// pistas, y son los dos tipos que entran a la cola de aprobación de
+/// lanzamientos del panel (un sencillo ya se revisa como pista suelta).
+enum AlbumType {
+  SINGLE
+  EP
+  ALBUM
+}
+
 /// Qué alimenta una sección editorial de la portada de la app.
 enum EditorialKind {
   MANUAL // el curador elige las pistas/álbumes a mano
@@ -295,6 +306,10 @@ model Album {
   releaseDate   DateTime?
   /// Color dominante de la portada en HEX, calculado al procesar el artwork.
   dominantColor String?
+  /// SINGLE por defecto: es lo que crea el propio backend para un sencillo.
+  /// Un EP/ÁLBUM sólo nace con este campo puesto a mano, al crearlo desde
+  /// `POST /albums` antes de subirle canciones.
+  type          AlbumType @default(SINGLE)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -454,6 +469,15 @@ model EditorialSection {
   isPublished Boolean         @default(false)
   /// Cuántas piezas mostrar en las secciones automáticas.
   maxItems    Int             @default(10)
+
+  /// Ventana de publicación programada — AMBAS opcionales y AMBAS aparte de
+  /// `isPublished`, no en su lugar: `isPublished` sigue siendo "el curador
+  /// terminó de armar esto y quiere que salga"; estas dos fechas acotan
+  /// CUÁNDO, dentro de eso. Una sección publicada con `publishAt` futuro no
+  /// sale todavía; una con `unpublishAt` pasado deja de salir sola, sin que
+  /// nadie tenga que entrar a desmarcar la casilla el día exacto.
+  publishAt   DateTime?
+  unpublishAt DateTime?
 
   items     EditorialItem[]
   createdAt DateTime        @default(now())
@@ -790,6 +814,12 @@ model TrackUpload {
   genreOverride   MusicGenre? @relation(fields: [genreOverrideId], references: [id], onDelete: SetNull)
   moodOverride    String?
 
+  /// Borrador de créditos: `[{ role, name, artistId?, splitPercent? }, …]`.
+  /// Se copia a filas `TrackCredit` recién al publicar, igual que
+  /// `analysisDraft` — así el creador puede corregirlos las veces que haga
+  /// falta mientras el draft siga vivo, sin tocar el catálogo público.
+  creditsDraft Json?
+
   publishedTrackId String? @unique
   publishedTrack   Track?  @relation(fields: [publishedTrackId], references: [id])
 
@@ -969,6 +999,24 @@ model SearchLog {
   createdAt   DateTime @default(now())
 
   @@index([normalized, createdAt])
+  @@index([createdAt])
+}
+
+/// Desde qué app se abrió la sección "Radio en vivo".
+enum RadioPlatform {
+  APP
+  WEB
+}
+
+/// Cuántas veces se abrió "Radio en vivo" (ver `radioApi.ts` en la app y la
+/// web) — sólo un conteo de uso, nunca contra qué estación: eso es contenido
+/// de un tercero (radio-browser.info) que Peyma no aloja ni modera, y no
+/// hay ninguna razón para registrar qué escucha cada usuario ahí.
+model RadioOpenEvent {
+  id        String        @id @default(cuid())
+  platform  RadioPlatform
+  createdAt DateTime      @default(now())
+
   @@index([createdAt])
 }
 

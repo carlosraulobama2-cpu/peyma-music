@@ -102,8 +102,11 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: `track:${track.id}`,
       label: track.title,
       hint: `Canción · ${track.artist.name}`,
+      // A la ficha del artista, donde vive la canción (con su estado y las
+      // acciones de moderación) — antes mandaba a `/jobs`, la cola de
+      // procesamiento, que no lee ningún parámetro de canción y no hacía nada.
       run: () => {
-        navigate(`/jobs?track=${track.id}`);
+        navigate(`/artists/${track.artist.id}`);
         onClose();
       },
     })),

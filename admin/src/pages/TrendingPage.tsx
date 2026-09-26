@@ -1,21 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Crown, BadgeCheck, Download } from 'lucide-react';
+import { Crown, BadgeCheck, Download, TrendingUp, TrendingDown, Sparkles } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { fetchTrending, formatHours, type TrendingRow } from '../lib/audience';
+import { fetchArtistGrowth, type ArtistGrowth } from '../lib/artists';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
+import { formatDuration } from '../lib/format';
 
 /** Miles con separador, igual que en el Tablero: 48.210, no 48210. */
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('es').format(value);
-}
-
-/** Duración de una pista como m:ss. */
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 const WINDOWS = [
@@ -31,13 +26,19 @@ const WINDOWS = [
  * título, ritmo (género y BPM) y artista. El nombre del artista es un enlace
  * a su ficha, no texto muerto.
  */
+type MainTab = 'canciones' | 'crecimiento';
+
 export function TrendingPage() {
   const navigate = useNavigate();
+  const [mainTab, setMainTab] = useState<MainTab>('canciones');
   const [days, setDays] = useState(7);
   const [data, setData] = useState<{ top1: TrendingRow | null; tracks: TrendingRow[] } | null>(null);
+  const [growthDays, setGrowthDays] = useState(7);
+  const [growth, setGrowth] = useState<ArtistGrowth[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (mainTab !== 'canciones') return;
     let cancelled = false;
     fetchTrending(days)
       .then((res) => !cancelled && setData({ top1: res.top1, tracks: res.tracks }))
@@ -47,60 +48,171 @@ export function TrendingPage() {
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, mainTab]);
+
+  useEffect(() => {
+    if (mainTab !== 'crecimiento') return;
+    let cancelled = false;
+    fetchArtistGrowth(growthDays)
+      .then((res) => !cancelled && setGrowth(res.artists))
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'No se pudo cargar el crecimiento.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [growthDays, mainTab]);
 
   return (
     <AdminShell
       title="Tendencias"
       subtitle="Lo más escuchado de la plataforma"
       actions={
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            disabled={!data || data.tracks.length === 0}
-            onClick={() =>
-              data &&
-              downloadCsv(
-                datedFilename(`tendencias-${days}d`),
-                toCsv(data.tracks, [
-                  { header: 'Posicion', value: (_r) => data.tracks.indexOf(_r) + 1 },
-                  { header: 'Titulo', value: (r) => r.title },
-                  { header: 'Artista', value: (r) => r.artistName },
-                  { header: 'Ritmo', value: (r) => r.genre ?? '' },
-                  { header: 'BPM', value: (r) => r.bpm ?? '' },
-                  { header: 'Reproducciones', value: (r) => r.streams },
-                  { header: 'Oyentes', value: (r) => r.listeners },
-                  { header: 'Minutos', value: (r) => Math.round(r.seconds / 60) },
-                ]),
-              )
-            }
-            className="flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold transition-colors hover:border-white disabled:opacity-40"
-          >
-            <Download size={13} aria-hidden />
-            CSV
-          </button>
-          {WINDOWS.map((option) => (
+        mainTab === 'canciones' ? (
+          <div className="flex gap-1.5">
             <button
-              key={option.days}
               type="button"
-              onClick={() => setDays(option.days)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                days === option.days ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
-              }`}
+              disabled={!data || data.tracks.length === 0}
+              onClick={() =>
+                data &&
+                downloadCsv(
+                  datedFilename(`tendencias-${days}d`),
+                  toCsv(data.tracks, [
+                    { header: 'Posicion', value: (_r) => data.tracks.indexOf(_r) + 1 },
+                    { header: 'Titulo', value: (r) => r.title },
+                    { header: 'Artista', value: (r) => r.artistName },
+                    { header: 'Ritmo', value: (r) => r.genre ?? '' },
+                    { header: 'BPM', value: (r) => r.bpm ?? '' },
+                    { header: 'Reproducciones', value: (r) => r.streams },
+                    { header: 'Oyentes', value: (r) => r.listeners },
+                    { header: 'Minutos', value: (r) => Math.round(r.seconds / 60) },
+                  ]),
+                )
+              }
+              className="flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold transition-colors hover:border-white disabled:opacity-40"
             >
-              {option.label}
+              <Download size={13} aria-hidden />
+              CSV
             </button>
-          ))}
-        </div>
+            {WINDOWS.map((option) => (
+              <button
+                key={option.days}
+                type="button"
+                onClick={() => setDays(option.days)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  days === option.days ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-1.5">
+            {[7, 28].map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setGrowthDays(option)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  growthDays === option ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
+                }`}
+              >
+                {option} días
+              </button>
+            ))}
+          </div>
+        )
       }
     >
+      <div className="mb-6 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setMainTab('canciones')}
+          className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            mainTab === 'canciones' ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
+          }`}
+        >
+          Canciones
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('crecimiento')}
+          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            mainTab === 'crecimiento' ? 'bg-white text-black' : 'bg-white/10 text-muted hover:text-foreground'
+          }`}
+        >
+          <TrendingUp size={14} aria-hidden />
+          Crecimiento de artistas
+        </button>
+      </div>
+
       {error && (
         <p role="alert" className="mb-6 rounded-xl bg-danger/10 px-4 py-3 text-sm font-semibold text-danger">
           {error}
         </p>
       )}
 
-      {!data ? (
+      {mainTab === 'crecimiento' && (
+        <>
+          <p className="mb-4 text-sm text-muted">
+            Oyentes distintos de los últimos {growthDays} días contra los {growthDays} anteriores a esos.
+          </p>
+          {!growth ? (
+            <div className="flex flex-col gap-2">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl border border-white/10 bg-surface" />
+              ))}
+            </div>
+          ) : growth.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-white/15 px-5 py-12 text-center text-sm text-muted">
+              Sin suficiente actividad reciente para medir crecimiento.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {growth.map((artist, index) => (
+                <li
+                  key={artist.artistId}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-surface px-4 py-3"
+                >
+                  <span className="w-6 shrink-0 text-center font-mono text-sm text-muted">{index + 1}</span>
+                  <CoverImage src={artist.imageUrl} alt={artist.name} size={40} rounded="rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/artists?search=${encodeURIComponent(artist.name)}`)}
+                      className="flex items-center gap-1.5 truncate text-sm font-semibold hover:underline"
+                    >
+                      {artist.name}
+                      {artist.isVerified && <BadgeCheck size={13} className="shrink-0 text-sky-400" aria-label="Verificado" />}
+                    </button>
+                    <p className="truncate text-xs text-muted">
+                      {artist.previousListeners} → {artist.currentListeners} oyente(s)
+                    </p>
+                  </div>
+                  {artist.growthPct === null ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-3 py-1 text-xs font-bold text-brand">
+                      <Sparkles size={12} aria-hidden /> Nuevo
+                    </span>
+                  ) : (
+                    <span
+                      className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
+                        artist.growthPct >= 0 ? 'bg-brand/15 text-brand' : 'bg-danger/15 text-danger'
+                      }`}
+                    >
+                      {artist.growthPct >= 0 ? <TrendingUp size={12} aria-hidden /> : <TrendingDown size={12} aria-hidden />}
+                      {artist.growthPct >= 0 ? '+' : ''}
+                      {artist.growthPct}%
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {mainTab === 'canciones' && (!data ? (
         <div className="flex flex-col gap-3">
           <div className="h-36 animate-pulse rounded-2xl border border-white/10 bg-surface" />
           {[...Array(5)].map((_, i) => (
@@ -189,7 +301,7 @@ export function TrendingPage() {
             ))}
           </ul>
         </>
-      )}
+      ))}
     </AdminShell>
   );
 }

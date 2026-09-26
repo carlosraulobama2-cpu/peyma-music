@@ -21,6 +21,14 @@ const PUBLIC_USER_SELECT = {
   favoriteGenres: true,
   role: true,
   createdAt: true,
+  /**
+   * Sin este campo, `/auth/me` nunca decía si la persona ya había
+   * decidido sobre compartir su ubicación aproximada — el cliente no
+   * podía distinguir "no preguntado todavía" de "dijo que no", así que
+   * `LocationConsentCard`/`LocationConsentBanner` volvían a preguntar en
+   * cada sesión, incluso a quien ya había dicho que no.
+   */
+  locationConsent: true,
 } as const;
 
 /**

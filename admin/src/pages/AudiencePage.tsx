@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download } from 'lucide-react';
+import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock, Repeat, Radio } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import {
@@ -7,6 +7,9 @@ import {
   fetchTopArtists,
   fetchTopSearches,
   fetchSignupFailures,
+  fetchListeningHeatmap,
+  fetchRetentionStats,
+  fetchRadioOpenStats,
   formatHours,
   SIGNUP_STAGE_LABELS,
   type TopListener,
@@ -14,6 +17,9 @@ import {
   type TopSearch,
   type SignupAttempt,
   type SignupStage,
+  type HeatmapCell,
+  type RetentionStats,
+  type RadioOpenStats,
 } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
 
@@ -28,14 +34,20 @@ import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
  * las dos cosas como si fueran medición.
  */
 
-type Tab = 'oyentes' | 'artistas' | 'busquedas' | 'altas';
+type Tab = 'oyentes' | 'artistas' | 'horarios' | 'retencion' | 'radio' | 'busquedas' | 'altas';
 
 const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'oyentes', label: 'Oyentes', icon: Clock },
   { id: 'artistas', label: 'Artistas por tiempo', icon: TrendingUp },
+  { id: 'horarios', label: 'Horarios', icon: CalendarClock },
+  { id: 'retencion', label: 'Retención', icon: Repeat },
+  { id: 'radio', label: 'Radio en vivo', icon: Radio },
   { id: 'busquedas', label: 'Qué se busca', icon: SearchIcon },
   { id: 'altas', label: 'Altas fallidas', icon: UserX },
 ];
+
+/** Domingo a sábado, en el mismo orden que `EXTRACT(DOW ...)` de Postgres (0 = domingo). */
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 /**
  * Aviso de cuánto del dato es estimación. Se calla si todo está medido.
@@ -60,6 +72,9 @@ export function AudiencePage() {
   const [order, setOrder] = useState<'desc' | 'asc'>('desc');
   const [listeners, setListeners] = useState<TopListener[] | null>(null);
   const [artists, setArtists] = useState<TopArtistByTime[] | null>(null);
+  const [heatmap, setHeatmap] = useState<HeatmapCell[] | null>(null);
+  const [retention, setRetention] = useState<RetentionStats | null>(null);
+  const [radioStats, setRadioStats] = useState<RadioOpenStats | null>(null);
   const [searches, setSearches] = useState<{ all: TopSearch[]; empty: TopSearch[] } | null>(null);
   const [signups, setSignups] = useState<{ byStage: Partial<Record<SignupStage, number>>; attempts: SignupAttempt[] } | null>(
     null,
@@ -79,6 +94,18 @@ export function AudiencePage() {
     } else if (tab === 'artistas') {
       fetchTopArtists()
         .then((r) => !cancelled && setArtists(r.artists))
+        .catch(fail);
+    } else if (tab === 'horarios') {
+      fetchListeningHeatmap()
+        .then((r) => !cancelled && setHeatmap(r.cells))
+        .catch(fail);
+    } else if (tab === 'retencion') {
+      fetchRetentionStats()
+        .then((r) => !cancelled && setRetention(r))
+        .catch(fail);
+    } else if (tab === 'radio') {
+      fetchRadioOpenStats()
+        .then((r) => !cancelled && setRadioStats(r))
         .catch(fail);
     } else if (tab === 'busquedas') {
       fetchTopSearches()
@@ -265,6 +292,12 @@ export function AudiencePage() {
           </ul>
         ))}
 
+      {tab === 'horarios' && (!heatmap ? <SkeletonList /> : <ListeningHeatmap cells={heatmap} />)}
+
+      {tab === 'retencion' && (!retention ? <SkeletonList /> : <RetentionPanel stats={retention} />)}
+
+      {tab === 'radio' && (!radioStats ? <SkeletonList /> : <RadioUsagePanel stats={radioStats} />)}
+
       {tab === 'busquedas' &&
         (!searches ? (
           <SkeletonList />
@@ -355,6 +388,136 @@ export function AudiencePage() {
           </>
         ))}
     </AdminShell>
+  );
+}
+
+/**
+ * Grilla de 7×24: un color más intenso por celda cuanto más se escucha en
+ * ese día y esa hora. En UTC — con oyentes en husos distintos no existe
+ * "la" hora local de todos, así que se dice el huso en vez de fingir uno.
+ */
+function ListeningHeatmap({ cells }: { cells: HeatmapCell[] }) {
+  if (cells.length === 0) return <Empty>Nadie escuchó nada en la ventana.</Empty>;
+
+  const byKey = new Map(cells.map((cell) => [`${cell.dayOfWeek}-${cell.hour}`, cell.streams]));
+  const max = Math.max(...cells.map((cell) => cell.streams), 1);
+  const peak = cells.reduce((best, cell) => (cell.streams > best.streams ? cell : best), cells[0]!);
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-muted">
+        Pico de actividad: <span className="font-semibold text-foreground">{DAY_LABELS[peak.dayOfWeek]}</span> a las{' '}
+        <span className="font-semibold text-foreground">{String(peak.hour).padStart(2, '0')}:00 UTC</span>, con{' '}
+        {peak.streams} reproducciones.
+      </p>
+
+      <div className="scrollbar-thin overflow-x-auto rounded-xl border border-white/10 bg-surface p-4">
+        <div className="inline-grid gap-1" style={{ gridTemplateColumns: `2.5rem repeat(24, minmax(1.5rem, 1fr))` }}>
+          <div />
+          {[...Array(24)].map((_, hour) => (
+            <div key={hour} className="text-center font-mono text-[10px] text-muted">
+              {hour % 3 === 0 ? hour : ''}
+            </div>
+          ))}
+
+          {DAY_LABELS.map((label, dayOfWeek) => (
+            <div key={label} className="contents">
+              <div className="flex items-center text-xs font-semibold text-muted">{label}</div>
+              {[...Array(24)].map((_, hour) => {
+                const streams = byKey.get(`${dayOfWeek}-${hour}`) ?? 0;
+                const intensity = streams / max;
+                return (
+                  <div
+                    key={hour}
+                    title={`${label} ${String(hour).padStart(2, '0')}:00 UTC — ${streams} reproducciones`}
+                    className="aspect-square rounded-sm"
+                    style={{ backgroundColor: intensity === 0 ? 'rgba(255,255,255,0.05)' : `rgba(29,185,84,${0.15 + intensity * 0.85})` }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Tarjetas de retención acumulada: día 1 ⊂ semana ⊂ mes, cada una sobre la cohorte con 30 días o más desde su primera escucha. */
+function RetentionPanel({ stats }: { stats: RetentionStats }) {
+  if (stats.cohortSize === 0) {
+    return <Empty>Todavía no hay usuarios con 30 días o más desde su primera escucha.</Empty>;
+  }
+
+  const rows: { label: string; returned: number; hint: string }[] = [
+    { label: 'Volvió al día siguiente', returned: stats.returnedDay1, hint: 'Entre el día 1 y el día 2' },
+    { label: 'Volvió dentro de la semana', returned: stats.returnedDay7, hint: 'En los primeros 7 días' },
+    { label: 'Volvió dentro del mes', returned: stats.returnedDay30, hint: 'En los primeros 30 días' },
+  ];
+
+  return (
+    <div>
+      <p className="mb-6 text-sm text-muted">
+        Sobre <span className="font-semibold text-foreground">{stats.cohortSize}</span> usuario(s) cuya primera
+        escucha fue hace 30 días o más — a los únicos a quienes ya les dio tiempo de completar las tres ventanas.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {rows.map((row) => {
+          const pct = Math.round((row.returned / stats.cohortSize) * 100);
+          return (
+            <div key={row.label} className="rounded-xl border border-white/10 bg-surface p-5">
+              <p className="text-sm font-semibold">{row.label}</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-brand">{pct}%</p>
+              <p className="mt-1 text-xs text-muted">
+                {row.returned} de {stats.cohortSize} · {row.hint}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Sólo un conteo de aperturas, nunca qué estación — "Radio en vivo"
+ * reproduce contenido de un tercero (radio-browser.info) que no pasa por
+ * este backend, así que esto es lo único que el panel puede saber al
+ * respecto: si se usa o no.
+ */
+function RadioUsagePanel({ stats }: { stats: RadioOpenStats }) {
+  if (stats.total === 0) {
+    return <Empty>Nadie abrió "Radio en vivo" en la ventana.</Empty>;
+  }
+
+  const appPct = Math.round((stats.app / stats.total) * 100);
+
+  return (
+    <div>
+      <p className="mb-6 text-sm text-muted">
+        Ventana de {stats.windowDays} días. Es sólo un conteo de uso: la app le habla directo a Radio Browser, así
+        que qué estación escucha cada quien no pasa por acá ni se guarda.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Total de aperturas</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-brand">{stats.total}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Desde la app</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums">{stats.app}</p>
+          <p className="mt-1 text-xs text-muted">{appPct}% del total</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-surface p-5">
+          <p className="text-sm font-semibold">Desde la web</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums">{stats.web}</p>
+          <p className="mt-1 text-xs text-muted">{100 - appPct}% del total</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

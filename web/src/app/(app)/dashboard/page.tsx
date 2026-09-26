@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Clock3, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { useAuth } from "../../../lib/AuthProvider";
 import { usePlayerStore } from "../../../store/usePlayerStore";
 import { useHomeFeed } from "../../../lib/useHomeFeed";
@@ -31,6 +32,20 @@ import { LocationConsentBanner } from "../../../components/LocationConsentBanner
  * quitó: una lista infinita de todo al final de Inicio no es una sección
  * editorial, es un volcado de la base de datos.
  */
+/** Un ícono y un tinte por fila fija — mismo criterio que la app (ver SectionHeader.tsx). */
+const ROW_ICON: Record<string, typeof Clock3> = {
+  recent: Clock3,
+  forYou: Sparkles,
+  trending: TrendingUp,
+  new: Zap,
+};
+const ROW_TINT: Record<string, string> = {
+  recent: "#B3B3B3",
+  forYou: "#B478FF",
+  trending: "#FFC94D",
+  new: "#4AD9E8",
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
@@ -104,7 +119,7 @@ export default function DashboardPage() {
               {quickPlayItems.length > 0 && <QuickPlayGrid items={quickPlayItems} />}
 
               {data.rows.map((row) => (
-                <MediaCarousel key={row.key} title={row.title}>
+                <MediaCarousel key={row.key} title={row.title} icon={ROW_ICON[row.key]} accentColor={ROW_TINT[row.key]}>
                   {row.tracks.map((track) => (
                     <MediaCard
                       key={track.id}

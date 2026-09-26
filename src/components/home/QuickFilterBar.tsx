@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useThemedStyles, spacing, radius, typography, type Theme } from '../../theme';
 
@@ -15,17 +15,22 @@ import { useThemedStyles, spacing, radius, typography, type Theme } from '../../
  * es música), así que se fusionan en un único chip "Todo" — un filtro que
  * no cambia nada al tocarlo sería una promesa falsa a quien lo usa. "Lo-Fi"
  * sí hace algo real: lleva al módulo dedicado que ya existe (`/lofi`), en
- * vez de reconstruir esa experiencia acá adentro.
+ * vez de reconstruir esa experiencia acá adentro. "Radio" hace lo mismo con
+ * `/radio` — estaciones de radio en vivo de terceros, no del catálogo.
  */
 export function QuickFilterBar() {
   const router = useRouter();
   const styles = useThemedStyles(makeStyles);
-  const [active, setActive] = useState<'all' | 'lofi'>('all');
+  const [active, setActive] = useState<'all' | 'lofi' | 'radio'>('all');
 
-  const handlePress = (filter: 'all' | 'lofi') => {
+  const handlePress = (filter: 'all' | 'lofi' | 'radio') => {
     Haptics.selectionAsync().catch(() => {});
     setActive(filter);
     if (filter === 'lofi') router.push('/lofi');
+    // `/radio` es una ruta nueva: los tipos de expo-router (`.expo/types`)
+    // todavía no la conocen hasta la próxima regeneración — mismo caso que
+    // ya se dio con las rutas de plantilla en `EditorialSections.tsx`.
+    if (filter === 'radio') router.push('/radio' as Href);
   };
 
   return (
@@ -45,6 +50,14 @@ export function QuickFilterBar() {
         accessibilityState={{ selected: active === 'lofi' }}
       >
         <Text style={[styles.chipText, active === 'lofi' && styles.chipTextActive]}>Lo-Fi</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => handlePress('radio')}
+        style={[styles.chip, active === 'radio' && styles.chipActive]}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active === 'radio' }}
+      >
+        <Text style={[styles.chipText, active === 'radio' && styles.chipTextActive]}>Radio</Text>
       </Pressable>
     </View>
   );

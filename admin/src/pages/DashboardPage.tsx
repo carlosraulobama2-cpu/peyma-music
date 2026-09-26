@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, Headphones, Music, AlertTriangle, Clock, Crown, BadgeCheck } from 'lucide-react';
+import { Radio, Users, Headphones, Music, AlertTriangle, Clock, Crown, BadgeCheck, Flag } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import { LiveListenerMap } from '../components/LiveListenerMap';
@@ -27,17 +27,41 @@ interface MetricCardProps {
   label: string;
   value: string;
   hint?: string;
-  tone?: 'normal' | 'warn' | 'live';
+  tone?: 'normal' | 'warn' | 'critical' | 'live';
 }
+
+/** Tinte del ícono y su halo por tono — la misma idea que en Inicio (app y web): un color propio hace que "crítico" se lea antes que el número. */
+const TONE_TINT: Record<NonNullable<MetricCardProps['tone']>, string> = {
+  normal: '#B3B3B3',
+  warn: '#F5A623',
+  critical: '#FF6B6B',
+  live: '#1DB954',
+};
 
 function MetricCard({ icon: Icon, label, value, hint, tone = 'normal' }: MetricCardProps) {
   const toneClass =
-    tone === 'warn' ? 'text-amber-400' : tone === 'live' ? 'text-brand' : 'text-foreground';
+    tone === 'critical'
+      ? 'text-danger'
+      : tone === 'warn'
+        ? 'text-amber-400'
+        : tone === 'live'
+          ? 'text-brand'
+          : 'text-foreground';
+  const tint = TONE_TINT[tone];
 
   return (
-    <div className="rounded-xl border border-white/10 bg-surface p-5">
+    <div
+      className={`rounded-xl border bg-surface p-5 transition-colors ${
+        tone === 'critical' ? 'border-danger/30' : 'border-white/10'
+      }`}
+    >
       <div className="flex items-center gap-2 text-sm text-muted">
-        <Icon size={15} aria-hidden />
+        <span className="relative flex size-6 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: `${tint}22` }}>
+          <Icon size={13} aria-hidden color={tint} />
+          {tone === 'live' && (
+            <span className="absolute -right-0.5 -top-0.5 size-2 animate-pulse rounded-full bg-brand ring-2 ring-surface" aria-hidden />
+          )}
+        </span>
         {label}
       </div>
       <div className={`mt-2 text-3xl font-bold tabular-nums ${toneClass}`}>{value}</div>
@@ -195,8 +219,35 @@ export function DashboardPage() {
               icon={Clock}
               label="Esperando moderación"
               value={formatNumber(metrics.catalog.pendingReview)}
-              hint="Pistas invisibles hasta ser aprobadas"
-              tone={metrics.catalog.pendingReview > 0 ? 'warn' : 'normal'}
+              hint={
+                metrics.catalog.pendingReview >= metrics.alerts.moderationThreshold
+                  ? `Supera el umbral de ${metrics.alerts.moderationThreshold} — revisá pronto`
+                  : 'Pistas invisibles hasta ser aprobadas'
+              }
+              tone={
+                metrics.catalog.pendingReview >= metrics.alerts.moderationThreshold
+                  ? 'critical'
+                  : metrics.catalog.pendingReview > 0
+                    ? 'warn'
+                    : 'normal'
+              }
+            />
+            <MetricCard
+              icon={Flag}
+              label="Denuncias abiertas"
+              value={formatNumber(metrics.catalog.openReports)}
+              hint={
+                metrics.catalog.openReports >= metrics.alerts.reportsThreshold
+                  ? `Supera el umbral de ${metrics.alerts.reportsThreshold}`
+                  : 'Sin revisar todavía'
+              }
+              tone={
+                metrics.catalog.openReports >= metrics.alerts.reportsThreshold
+                  ? 'critical'
+                  : metrics.catalog.openReports > 0
+                    ? 'warn'
+                    : 'normal'
+              }
             />
             <MetricCard
               icon={AlertTriangle}

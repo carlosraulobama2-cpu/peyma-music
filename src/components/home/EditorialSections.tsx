@@ -1,12 +1,36 @@
-import { View, Text, Pressable } from 'react-native';
+import { View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { api, type EditorialSection } from '../../services';
 import { useAsyncData } from '../../hooks';
 import { usePlayerStore, useSheetStore } from '../../store';
 import { MediaCard } from './MediaCard';
+import { SectionHeader } from './SectionHeader';
 import { Skeleton } from '../Skeleton';
-import { useThemedStyles, spacing, typography, type Theme } from '../../theme';
+import { useThemedStyles, spacing, type Theme } from '../../theme';
+
+/**
+ * Un ícono y un tinte propios por tipo de sección — para que "Lo nuevo" y
+ * "Los mejores álbumes" se distingan de un vistazo aunque el curador les
+ * haya puesto títulos parecidos. `MANUAL` es lo único sin patrón fijo (el
+ * curador elige libremente qué mezclar), así que usa el símbolo más neutro.
+ */
+const KIND_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  NEW_RELEASES: 'flash',
+  TOP_TRACKS: 'trending-up',
+  TOP_ALBUMS: 'albums',
+  TOP_ARTISTS: 'people',
+  MANUAL: 'color-palette',
+};
+
+const KIND_TINT: Record<string, string> = {
+  NEW_RELEASES: '#4AD9E8',
+  TOP_TRACKS: '#FFC94D',
+  TOP_ALBUMS: '#B478FF',
+  TOP_ARTISTS: '#FF8FB1',
+  MANUAL: '#1DB954',
+};
 
 /**
  * Secciones de la portada definidas desde el panel de control.
@@ -90,20 +114,19 @@ export function EditorialSections() {
 
         return (
           <View key={section.id} style={styles.container}>
-            {/* El título lleva a la sección completa: el carrusel sólo
-                muestra las primeras piezas. */}
-            <Pressable
-              // El cast es necesario hasta que el servidor de desarrollo
-              // regenere `.expo/types/router.d.ts`: Expo Router tipa las rutas
-              // a partir de los archivos existentes cuando arranca, así que una
-              // pantalla recién creada todavía no figura en esa unión.
-              onPress={() => router.push(`/seccion/${section.slug}` as Href)}
-              accessibilityRole="link"
-              accessibilityLabel={`Ver todo en ${section.title}`}
-            >
-              <Text style={styles.title}>{section.title} ›</Text>
-            </Pressable>
-            {section.subtitle ? <Text style={styles.subtitle}>{section.subtitle}</Text> : null}
+            {/* El "ver todo" lleva a la sección completa: el carrusel sólo
+                muestra las primeras piezas. El cast en el href es necesario
+                hasta que el servidor de desarrollo regenere
+                `.expo/types/router.d.ts`: Expo Router tipa las rutas a
+                partir de los archivos existentes cuando arranca, así que una
+                pantalla recién creada todavía no figura en esa unión. */}
+            <SectionHeader
+              icon={KIND_ICON[section.kind] ?? 'color-palette'}
+              title={section.title}
+              subtitle={section.subtitle ?? undefined}
+              accentColor={KIND_TINT[section.kind]}
+              seeAllHref={`/seccion/${section.slug}` as Href}
+            />
             <FlashList
               data={cards}
               horizontal
@@ -134,23 +157,9 @@ export function EditorialSections() {
   );
 }
 
-const makeStyles = ({ colors }: Theme) => ({
+const makeStyles = (_theme: Theme) => ({
   container: {
     marginBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text.primary,
-    fontFamily: typography.family.bold,
-    fontSize: typography.size.xl,
-    marginBottom: spacing.xs,
-    marginLeft: spacing.md,
-  },
-  subtitle: {
-    color: colors.text.secondary,
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.sm,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.md,
   },
   skeletonTitle: {
     marginBottom: spacing.sm,

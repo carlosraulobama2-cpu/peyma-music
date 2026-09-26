@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, ActivityIndicator } from 'react-native';
 import TrackPlayer from 'react-native-track-player';
 import { playbackService } from '../src/services/trackPlayerService';
-import { useSetupTrackPlayer, useTrackPlayer, useListeningAnalytics } from '../src/hooks';
+import { useSetupTrackPlayer, useTrackPlayer, useListeningAnalytics, usePeymaConnect } from '../src/hooks';
 import { useAuthStore, useArtistStore } from '../src/store';
 import { useTheme } from '../src/theme';
 import { ErrorBoundary, ToastHost, SheetHost } from '../src/components';
@@ -54,10 +54,11 @@ ErrorUtils.setGlobalHandler?.((error, isFatal) => {
   manejadorPrevio?.(error, isFatal);
 });
 
-/** Mantiene sincronizados TrackPlayer y el playerStore mientras la app vive. */
+/** Mantiene sincronizados TrackPlayer, el playerStore y Peyma Connect mientras la app vive. */
 function PlayerSync() {
   useTrackPlayer();
   useListeningAnalytics();
+  usePeymaConnect();
   return null;
 }
 
@@ -123,7 +124,17 @@ function RootNavigator() {
         <Stack.Screen name="lofi/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen
           name="player/[trackId]"
-          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          options={{
+            // Hoja corta, no pantalla completa: dejar ver detrás (Apple
+            // Music, no una modal opaca de borde a borde). Nativo en ambas
+            // plataformas — iOS usa su UISheetPresentationController,
+            // Android el Material BottomSheetBehaviour de react-native-screens.
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.92],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            sheetExpandsWhenScrolledToEdge: false,
+          }}
         />
       </Stack>
       <ToastHost />

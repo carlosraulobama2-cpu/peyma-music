@@ -1,4 +1,5 @@
 import { http, uploadFile } from './httpClient';
+import type { TrackReviewStatus } from './moderation';
 
 export interface UploadDraft {
   id: string;
@@ -38,8 +39,13 @@ export function analyzeUpload(uploadId: string): Promise<{ upload: UploadDraft }
   return http.post<{ upload: UploadDraft }>(`/uploads/${uploadId}/analyze`);
 }
 
-export function publishUpload(uploadId: string): Promise<{ track: { id: string; title: string; status: string } }> {
-  return http.post<{ track: { id: string; title: string; status: string } }>(`/uploads/${uploadId}/publish`, { confirm: true });
+export function publishUpload(
+  uploadId: string,
+): Promise<{ track: { id: string; title: string; status: TrackReviewStatus } }> {
+  return http.post<{ track: { id: string; title: string; status: TrackReviewStatus } }>(
+    `/uploads/${uploadId}/publish`,
+    { confirm: true },
+  );
 }
 
 /**

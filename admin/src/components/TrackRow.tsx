@@ -5,14 +5,9 @@ import { CoverImage } from './CoverImage';
 import { StatusBadge } from './StatusBadge';
 import { ReasonModal } from './ReasonModal';
 import { AudioPreview } from './AudioPreview';
-import type { ModerationTrack } from '../lib/moderation';
+import { CREDIT_ROLE_LABEL, type ModerationTrack } from '../lib/moderation';
+import { formatDuration } from '../lib/format';
 import { fetchGenreOptions, setTrackGenre, type GenreOption } from '../lib/trackGenre';
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 interface TrackRowProps {
   track: ModerationTrack;
@@ -157,6 +152,16 @@ export function TrackRow({ track, isPending, onApprove, onReject }: TrackRowProp
                     el máster viene recortando
                   </span>
                 )}
+              </p>
+            )}
+
+            {track.credits.length > 0 && (
+              <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                {track.credits.map((credit) => (
+                  <span key={credit.id}>
+                    <span className="font-semibold text-foreground">{CREDIT_ROLE_LABEL[credit.role]}:</span> {credit.name}
+                  </span>
+                ))}
               </p>
             )}
           </div>

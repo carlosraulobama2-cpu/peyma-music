@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { TrendingUp, Trophy } from "lucide-react";
 import { MediaCarousel } from "./MediaCarousel";
 import { CoverImage } from "../CoverImage";
+
+const RANK_TINT = "#FFC94D";
 
 /**
  * Fila de artistas con avatar redondo.
@@ -35,20 +38,35 @@ export function ArtistRow({ title, artists, href }: ArtistRowProps) {
   if (artists.length === 0) return null;
 
   return (
-    <MediaCarousel title={title} href={href}>
-      {artists.map((artist) => (
+    <MediaCarousel title={title} href={href} icon={TrendingUp} accentColor={RANK_TINT}>
+      {artists.map((artist, index) => (
         <Link
           key={artist.id}
           href={`/artists/${artist.id}`}
           className="group flex w-36 flex-shrink-0 snap-start flex-col items-center gap-3 rounded-md p-3 text-center transition-all duration-300 hover:bg-[#282828] sm:w-40"
         >
-          <CoverImage
-            src={artist.imageUrl}
-            alt={artist.name}
-            size={128}
-            rounded="rounded-full"
-            className="shadow-lg transition-transform duration-300 group-hover:scale-105"
-          />
+          <span className="relative">
+            <CoverImage
+              src={artist.imageUrl}
+              alt={artist.name}
+              size={128}
+              rounded="rounded-full"
+              className="shadow-lg transition-transform duration-300 group-hover:scale-105"
+            />
+            {index === 0 ? (
+              <span
+                className="absolute bottom-0.5 right-0.5 flex size-7 items-center justify-center rounded-full ring-2 ring-background"
+                style={{ backgroundColor: RANK_TINT }}
+                aria-label="#1 en popularidad"
+              >
+                <Trophy size={14} color="#3A2C00" />
+              </span>
+            ) : index < 3 ? (
+              <span className="absolute bottom-0.5 right-0.5 flex size-6 items-center justify-center rounded-full bg-surface text-xs font-bold ring-2 ring-background">
+                {index + 1}
+              </span>
+            ) : null}
+          </span>
           <span className="min-w-0 w-full">
             <span className="flex items-center justify-center gap-1 truncate text-sm font-semibold">
               <span className="truncate">{artist.name}</span>

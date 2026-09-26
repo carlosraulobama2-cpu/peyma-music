@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../../lib/AuthProvider";
 import { http } from "../../../lib/httpClient";
+import { uploadImageToBucket, describeRejection } from "../../../lib/avatarUpload";
+import { IMAGE_ACCEPT } from "../../../lib/fileTypes";
 import { CoverImage } from "../../../components/CoverImage";
 import { fetchGenreOptions } from "../../../lib/genres";
 
@@ -17,12 +19,18 @@ import { fetchGenreOptions } from "../../../lib/genres";
  * Crea el perfil en el SERVIDOR, que además asigna la titularidad: sin
  * ella, el pipeline de subida rechaza las canciones porque no reconoce al
  * dueño del perfil.
+ *
+ * La foto se sube como archivo (`uploadImageToBucket`), igual que en
+ * `/subir` — antes este formulario pedía una URL de texto y, si se dejaba
+ * vacía, reutilizaba el avatar de la cuenta o una imagen fija de
+ * archive.org, con lo que el artista heredaba una foto que no eligió.
  */
 
 
 
-/** Imagen de respaldo si el usuario no tiene avatar ni pone una URL. */
-const FALLBACK_IMAGE = "https://archive.org/services/img/badpanda006";
+function elegido(files: FileList | null): File | null {
+  return files && files.length > 0 ? files[0]! : null;
+}
 
 interface ArtistProfile {
   id: string;
@@ -40,7 +48,8 @@ export default function BecomeArtistPage() {
   // `undefined` = todavía no se consultó; `null` = consultado y no tiene.
   const [profile, setProfile] = useState<ArtistProfile | null | undefined>(undefined);
   const [name, setName] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [foto, setFoto] = useState<File | null>(null);
+  const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
   /**
@@ -52,6 +61,24 @@ export default function BecomeArtistPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const elegirFoto = (file: File | null) => {
+    setError(null);
+    if (!file) {
+      setFoto(null);
+      setVistaPrevia(null);
+      return;
+    }
+    // Se valida antes de subir nada: decirle a alguien que su foto no vale
+    // después de esperar la subida es la peor versión de este flujo.
+    const rechazo = describeRejection(file);
+    if (rechazo) {
+      setError(rechazo);
+      return;
+    }
+    setFoto(file);
+    setVistaPrevia(URL.createObjectURL(file));
+  };
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/login");
@@ -92,15 +119,16 @@ export default function BecomeArtistPage() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!foto) return;
     setSubmitting(true);
     setError(null);
     try {
+      // La imagen va primero: el backend exige `imageUrl` al crear, así que
+      // si la subida falla no llega a crearse un perfil a medias.
+      const imageUrl = await uploadImageToBucket(foto);
       const { artist } = await http.post<{ artist: ArtistProfile }>("/artists", {
         name: name.trim(),
-        // El backend exige una imagen. Se usa el avatar si no se pone otra,
-        // en vez de rechazar el formulario por un campo que casi nadie
-        // tiene a mano al empezar.
-        imageUrl: imageUrl.trim() || user?.avatarUrl || FALLBACK_IMAGE,
+        imageUrl,
         ...(bio.trim() ? { bio: bio.trim() } : {}),
         genres,
       });
@@ -182,16 +210,26 @@ export default function BecomeArtistPage() {
         </label>
 
         <label className="flex flex-col gap-2 text-sm font-semibold">
-          Foto (URL)
+          Foto del artista (.jpg, .png, .webp)
           <input
-            type="url"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://…"
-            className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
+            type="file"
+            accept={IMAGE_ACCEPT}
+            onChange={(e) => elegirFoto(elegido(e.target.files))}
+            required
+            className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
           />
-          <span className="text-xs font-normal text-muted">Si lo dejás vacío usamos tu foto de perfil.</span>
+          <span className="text-xs font-normal text-muted">
+            Es la foto del artista, no la de tu cuenta: podés llamarte de una forma y tu proyecto de otra.
+          </span>
         </label>
+
+        {vistaPrevia && (
+          <div className="flex items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:), no pasa por el optimizador */}
+            <img src={vistaPrevia} alt="Vista previa de la foto" className="size-20 rounded-full object-cover" />
+            <p className="text-sm font-bold">{name.trim() || "Tu nombre artístico"}</p>
+          </div>
+        )}
 
         <label className="flex flex-col gap-2 text-sm font-semibold">
           Biografía
@@ -231,7 +269,7 @@ export default function BecomeArtistPage() {
 
         <button
           type="submit"
-          disabled={submitting || !name.trim()}
+          disabled={submitting || !name.trim() || !foto}
           className="mt-2 self-start rounded-full bg-brand px-8 py-3 text-sm font-bold text-black transition-colors hover:bg-brand-hover disabled:opacity-50"
         >
           {submitting ? "Creando…" : "Crear mi perfil de artista"}

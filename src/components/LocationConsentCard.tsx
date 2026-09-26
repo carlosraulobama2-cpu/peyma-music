@@ -25,10 +25,7 @@ export function LocationConsentCard() {
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const consent = (user as { locationConsent?: string } | null)?.locationConsent;
-  // `undefined` en sesiones creadas antes de que existiera el campo: se
-  // trata igual que "no preguntado".
-  const shouldAsk = Boolean(user) && (consent === undefined || consent === 'NOT_ASKED');
+  const shouldAsk = user?.locationConsent === 'NOT_ASKED';
 
   if (!shouldAsk || dismissed) return null;
 

@@ -10,7 +10,7 @@ import type { ArtistStats, Track } from '../types';
 jest.mock('../services/api', () => ({
   api: {
     getArtistStats: jest.fn(),
-    getArtistTracks: jest.fn(),
+    getMyTracks: jest.fn(),
   },
 }));
 
@@ -46,7 +46,7 @@ function makeTrack(overrides: Partial<Track> = {}): Track {
 beforeEach(() => {
   jest.clearAllMocks();
   mockApi.getArtistStats.mockResolvedValue(makeStats());
-  mockApi.getArtistTracks.mockResolvedValue([]);
+  mockApi.getMyTracks.mockResolvedValue([]);
   useArtistStore.setState({ profile: null, releases: [], stats: null, isLoadingStats: false });
 });
 
@@ -100,7 +100,7 @@ describe('artistStore — refreshStats', () => {
     expect(useArtistStore.getState().isLoadingStats).toBe(false);
   });
 
-  it('mantiene las subidas que aún esperan aprobación', async () => {
+  it('muestra la subida propia al instante, antes de que el servidor conteste', () => {
     useArtistStore.getState().publishTrack({
       id: 'pendiente-1',
       title: 'En revisión',
@@ -110,30 +110,35 @@ describe('artistStore — refreshStats', () => {
       coverUrl: '',
       audioUrl: '',
     });
-    mockApi.getArtistTracks.mockResolvedValueOnce([makeTrack()]);
+
+    const [release] = useArtistStore.getState().releases;
+    expect(release?.id).toBe('pendiente-1');
+    expect(release?.status).toBe('PENDING_REVIEW');
+  });
+
+  it('refreshStats reemplaza el estado local por la lista completa y autoritativa del servidor (getMyTracks, todos los estados)', async () => {
+    useArtistStore.getState().publishTrack({
+      id: 'pendiente-1',
+      title: 'En revisión',
+      album: 'Sencillos',
+      albumId: 'artist-self',
+      duration: 200,
+      coverUrl: '',
+      audioUrl: '',
+    });
+
+    // El servidor ya tiene una versión más completa/actualizada: una
+    // aprobada y una rechazada — ninguna es 'pendiente-1', que por tanto
+    // debe desaparecer en vez de quedar mezclada con lo local.
+    const approved = makeTrack({ id: 'track-servidor-1', status: 'APPROVED' });
+    const rejected = makeTrack({ id: 'track-servidor-2', status: 'REJECTED' });
+    mockApi.getMyTracks.mockResolvedValueOnce([approved, rejected]);
 
     await useArtistStore.getState().refreshStats();
 
     const ids = useArtistStore.getState().releases.map((t) => t.id);
-    expect(ids).toContain('track-servidor-1'); // la que ya publicó el servidor
-    expect(ids).toContain('pendiente-1'); // la que sigue en revisión
-  });
-
-  it('no duplica una pista cuando el servidor ya la devuelve', async () => {
-    useArtistStore.getState().publishTrack({
-      id: 'track-servidor-1',
-      title: 'Publicada',
-      album: 'Sencillos',
-      albumId: 'album-1',
-      duration: 180,
-      coverUrl: '',
-      audioUrl: '',
-    });
-    mockApi.getArtistTracks.mockResolvedValueOnce([makeTrack()]);
-
-    await useArtistStore.getState().refreshStats();
-
-    expect(useArtistStore.getState().releases.filter((t) => t.id === 'track-servidor-1')).toHaveLength(1);
+    expect(ids).toEqual(['track-servidor-1', 'track-servidor-2']);
+    expect(useArtistStore.getState().releases.find((t) => t.id === 'track-servidor-2')?.status).toBe('REJECTED');
   });
 });
 

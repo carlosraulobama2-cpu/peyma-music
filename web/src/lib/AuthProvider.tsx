@@ -8,6 +8,9 @@ import { invalidateHomeFeed } from "./useHomeFeed";
 
 export type Role = "USER" | "ARTIST" | "ADMIN";
 
+/** Espejo del enum `LocationConsent` de Prisma. */
+export type LocationConsentValue = "NOT_ASKED" | "GRANTED" | "DENIED";
+
 export interface BackendUser {
   id: string;
   email: string;
@@ -16,6 +19,7 @@ export interface BackendUser {
   favoriteGenres: string[];
   role: Role;
   createdAt: string;
+  locationConsent: LocationConsentValue;
 }
 
 export class AuthError extends Error {}

@@ -12,6 +12,7 @@ import { QueueDrawer } from "./QueueDrawer";
 import { SpectrumVisualizer } from "./SpectrumVisualizer";
 import { initAudioEngine, resumeAudioContext, setLofiEnabled } from "../lib/audioEngine";
 import { useUiStore } from "../store/useUiStore";
+import { isRadioTrack } from "../lib/radioApi";
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds)) return "0:00";
@@ -41,6 +42,8 @@ export function PlayerDeck() {
    */
   const listenedRef = useRef(0);
   const lastTimeRef = useRef(0);
+  /** true mientras `audio.src` es el blob precargado (sólo los primeros ~2 MB). */
+  const isPrefetchedSourceRef = useRef(false);
   const [showQueue, setShowQueue] = useState(false);
   const [lofiEnabled, setLofi] = useState(false);
   const toggleNowPlaying = useUiStore((s) => s.toggleNowPlaying);
@@ -52,21 +55,46 @@ export function PlayerDeck() {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
 
-    // Se reproduce SIEMPRE por nuestro proxy, no por la URL original: es lo
-    // que hace que el audio llegue con CORS y que el grafo de Web Audio
-    // (visualizador + filtro Lo-Fi) no silencie la salida.
+    const isRadio = isRadioTrack(currentTrack);
+
+    // Una estación de radio no es una pista del catálogo: no tiene fila en
+    // `Track` que el proxy pueda resolver, así que suena directo de la URL
+    // que dio Radio Browser. El resto (proxy propio, precarga) sólo aplica
+    // a canciones reales.
+    //
+    // Nota CORS: si la estación no manda cabeceras CORS (muchas no lo
+    // hacen, son emisoras de terceros), el elemento `<audio crossOrigin>`
+    // sigue sonando igual — el navegador sólo lo marca "tainted" para Web
+    // Audio, así que el visualizador de espectro puede verse plano para
+    // esa estación en particular. Nunca se pierde el audio en sí.
+    const streamUrl = isRadio
+      ? currentTrack.audioUrl
+      : `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
     // Si la canción ya está en el búfer de RAM (porque se precargó siendo
     // la siguiente de la cola), se reproduce desde memoria y arranca sin
-    // esperar a la red.
-    audio.src =
-      getPrefetchedUrl(currentTrack.id) ??
-      `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
+    // esperar a la red. El búfer sólo trae los primeros ~2 MB (ver
+    // audioPrefetch.ts): cuando se agoten, el evento `waiting` del propio
+    // `<audio>` avisa, y ahí se cambia a la URL de streaming completa
+    // conservando la posición — si no, la canción se cortaría a mitad.
+    const prefetchedUrl = isRadio ? null : getPrefetchedUrl(currentTrack.id);
+    isPrefetchedSourceRef.current = prefetchedUrl !== null;
+    audio.src = prefetchedUrl ?? streamUrl;
     initAudioEngine(audio);
     void resumeAudioContext();
     audio.play().catch(() => {
       // Autoplay bloqueado por el navegador hasta que haya un gesto del
       // usuario — no es un error real, el usuario ya hizo click en "play".
     });
+
+    listenedRef.current = 0;
+    lastTimeRef.current = 0;
+
+    if (isRadio) {
+      // Ni se registra como reproducción (`/streams/log` espera un trackId
+      // real; el backend la rechazaría) ni se precarga la "siguiente
+      // estación" — no hay nada del backend que precargar.
+      return;
+    }
 
     // Alimenta oyentes mensuales y el ranking de tendencias — mismo endpoint
     // que usa la app móvil. Si falla no se interrumpe la reproducción.
@@ -97,9 +125,6 @@ export function PlayerDeck() {
       })
       .catch(() => {});
 
-    listenedRef.current = 0;
-    lastTimeRef.current = 0;
-
     /**
      * Precarga la SIGUIENTE canción de la cola y purga lo demás.
      *
@@ -110,9 +135,10 @@ export function PlayerDeck() {
      */
     const { queue: q, queueIndex: qi } = usePlayerStore.getState();
     const nextTrack = q[qi + 1];
-    const keep = [currentTrack.id, ...(nextTrack ? [nextTrack.id] : [])];
+    const nextIsPrefetchable = nextTrack && !isRadioTrack(nextTrack);
+    const keep = [currentTrack.id, ...(nextIsPrefetchable ? [nextTrack.id] : [])];
     purgeExcept(keep);
-    if (nextTrack) void prefetchTrack(nextTrack.id, keep);
+    if (nextIsPrefetchable) void prefetchTrack(nextTrack.id, keep);
 
     return () => {
       cancelled = true;
@@ -181,6 +207,18 @@ export function PlayerDeck() {
           setProgress(now);
         }}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onWaiting={(e) => {
+          // El búfer precargado (~2 MB) se agotó: se sigue por la URL de
+          // streaming completa desde donde iba, si no la canción se
+          // quedaría muda a mitad de reproducción.
+          if (!isPrefetchedSourceRef.current || !currentTrack) return;
+          isPrefetchedSourceRef.current = false;
+          const audio = e.currentTarget;
+          const resumeAt = audio.currentTime;
+          audio.src = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/tracks/${currentTrack.id}/stream`;
+          audio.currentTime = resumeAt;
+          if (isPlaying) audio.play().catch(() => {});
+        }}
         onEnded={next}
       />
 
@@ -208,18 +246,25 @@ export function PlayerDeck() {
             ⏭
           </button>
         </div>
-        <div className="flex w-full max-w-md items-center gap-2 font-mono text-[11px] text-muted">
-          <span>{formatTime(progress)}</span>
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            value={Math.min(progress, duration || 0)}
-            onChange={handleSeek}
-            className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-brand"
-          />
-          <span>{formatTime(duration)}</span>
-        </div>
+        {isRadioTrack(currentTrack) ? (
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#FF8F8F]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#FF5A5A]" aria-hidden />
+            En vivo
+          </div>
+        ) : (
+          <div className="flex w-full max-w-md items-center gap-2 font-mono text-[11px] text-muted">
+            <span>{formatTime(progress)}</span>
+            <input
+              type="range"
+              min={0}
+              max={duration || 0}
+              value={Math.min(progress, duration || 0)}
+              onChange={handleSeek}
+              className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-brand"
+            />
+            <span>{formatTime(duration)}</span>
+          </div>
+        )}
       </div>
 
       <div className="hidden flex-1 items-center justify-end gap-3 sm:flex">

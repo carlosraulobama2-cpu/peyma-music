@@ -7,3 +7,4 @@ export { useAsyncData } from './useAsyncData';
 export { useTabBarHeight } from './useTabBarHeight';
 export { useAudioPlayer, type UseAudioPlayerResult } from './useAudioPlayer';
 export { useRecommendations } from './useRecommendations';
+export { usePeymaConnect } from './usePeymaConnect';

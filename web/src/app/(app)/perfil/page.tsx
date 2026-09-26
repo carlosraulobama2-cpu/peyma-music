@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "../../../lib/AuthProvider";
+import { useAuth, type LocationConsentValue } from "../../../lib/AuthProvider";
 import { http } from "../../../lib/httpClient";
 import { CoverImage } from "../../../components/CoverImage";
 import { uploadAvatar } from "../../../lib/avatarUpload";
@@ -22,8 +22,6 @@ import { TERMS, PRIVACY, TERMS_UPDATED_LABEL } from "../../../lib/legal";
  * en el panel de control y no aquí: son decisiones de quien opera Peyma,
  * no del oyente.
  */
-
-type ConsentValue = "NOT_ASKED" | "GRANTED" | "DENIED";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -48,7 +46,7 @@ export default function ProfilePage() {
    */
   const [opcionesGenero, setOpcionesGenero] = useState<string[]>([]);
 
-  const [consentDraft, setConsentDraft] = useState<ConsentValue | null>(null);
+  const [consentDraft, setConsentDraft] = useState<LocationConsentValue | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -57,8 +55,7 @@ export default function ProfilePage() {
   const displayName = nameDraft ?? user?.displayName ?? "";
   const avatarUrl = avatarDraft ?? user?.avatarUrl ?? "";
   const genres = genresDraft ?? user?.favoriteGenres ?? [];
-  const consent =
-    consentDraft ?? ((user as { locationConsent?: ConsentValue } | null)?.locationConsent ?? "NOT_ASKED");
+  const consent = consentDraft ?? user?.locationConsent ?? "NOT_ASKED";
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/login");

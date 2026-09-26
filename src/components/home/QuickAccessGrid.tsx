@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useLibraryStore, usePlayerStore } from '../../store';
+import { api } from '../../services';
+import type { HomeFeed } from '../../services';
 import { useTheme, useThemedStyles, spacing, radius, typography, motion, type Theme } from '../../theme';
 import type { Track } from '../../types';
 
@@ -14,14 +16,32 @@ interface QuickAccessTile {
   coverUrl: string;
   kind: 'resume' | 'track' | 'playlist';
   track?: Track;
+  trackId?: string;
   playlistId?: string;
   progressRatio?: number;
 }
 
 const GRID_SIZE = 6;
 
-/** Rejilla 2×3 con lo último que el usuario tocó — igual que la fila de arriba de Spotify Home. */
-export function QuickAccessGrid() {
+interface QuickAccessGridProps {
+  /**
+   * Accesos rápidos curados por el servidor (playlists reales del usuario +
+   * lo escuchado recientemente en cualquier dispositivo, ver `GET /home`).
+   * Si no llegó todavía (o falló), la rejilla se completa con lo que haya
+   * en el store local, igual que antes.
+   */
+  quickAccess?: HomeFeed['quickAccess'];
+}
+
+/**
+ * Rejilla 2×3 con lo último que el usuario tocó — igual que la fila de
+ * arriba de Spotify Home. "Continuar escuchando" es siempre local (depende
+ * de la posición exacta en ESTE teléfono), pero las playlists y lo
+ * reproducido recientemente vienen del servidor cuando están disponibles,
+ * así lo que decide un curador desde el panel también se ve acá, no sólo
+ * en la web.
+ */
+export function QuickAccessGrid({ quickAccess }: QuickAccessGridProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -30,6 +50,7 @@ export function QuickAccessGrid() {
   const recentlyPlayed = useLibraryStore((s) => s.recentlyPlayed);
   const playlists = useLibraryStore((s) => s.playlists);
   const play = usePlayerStore((s) => s.play);
+  const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null);
 
   const tiles = useMemo<QuickAccessTile[]>(() => {
     const seen = new Set<string>();
@@ -49,19 +70,32 @@ export function QuickAccessGrid() {
       });
     }
 
-    for (const playlist of playlists) {
-      if (items.length >= GRID_SIZE) break;
-      items.push({ id: `playlist-${playlist.id}`, title: playlist.title, coverUrl: playlist.coverUrl, kind: 'playlist', playlistId: playlist.id });
-    }
-
-    for (const track of recentlyPlayed) {
-      if (items.length >= GRID_SIZE || seen.has(track.id)) continue;
-      seen.add(track.id);
-      items.push({ id: `track-${track.id}`, title: track.title, coverUrl: track.coverUrl, kind: 'track', track });
+    if (quickAccess) {
+      for (const entry of quickAccess) {
+        if (items.length >= GRID_SIZE || seen.has(entry.id)) continue;
+        seen.add(entry.id);
+        items.push(
+          entry.kind === 'playlist'
+            ? { id: `playlist-${entry.id}`, title: entry.title, coverUrl: entry.coverUrl ?? '', kind: 'playlist', playlistId: entry.id }
+            : { id: `track-${entry.id}`, title: entry.title, coverUrl: entry.coverUrl ?? '', kind: 'track', trackId: entry.id },
+        );
+      }
+    } else {
+      // Sin respuesta del servidor todavía (o la petición falló): se rellena
+      // con lo que ya había en el teléfono, para no dejar la rejilla vacía.
+      for (const playlist of playlists) {
+        if (items.length >= GRID_SIZE) break;
+        items.push({ id: `playlist-${playlist.id}`, title: playlist.title, coverUrl: playlist.coverUrl, kind: 'playlist', playlistId: playlist.id });
+      }
+      for (const track of recentlyPlayed) {
+        if (items.length >= GRID_SIZE || seen.has(track.id)) continue;
+        seen.add(track.id);
+        items.push({ id: `track-${track.id}`, title: track.title, coverUrl: track.coverUrl, kind: 'track', track });
+      }
     }
 
     return items.slice(0, GRID_SIZE);
-  }, [resumePoints, playlists, recentlyPlayed]);
+  }, [resumePoints, playlists, recentlyPlayed, quickAccess]);
 
   if (tiles.length === 0) return null;
 
@@ -71,16 +105,28 @@ export function QuickAccessGrid() {
       router.push(`/playlist/${tile.playlistId}`);
       return;
     }
-    if (tile.track) {
-      if (tile.kind === 'resume') {
-        // Continuar exactamente donde quedó: se reanuda y luego se busca la posición guardada.
-        play(tile.track, [tile.track]).then(() => {
-          const point = resumePoints.find((p) => p.track.id === tile.track!.id);
-          if (point) usePlayerStore.getState().seekTo(point.positionSeconds);
-        });
-      } else {
-        play(tile.track, recentlyPlayed);
-      }
+    if (tile.kind === 'resume' && tile.track) {
+      // Continuar exactamente donde quedó: se reanuda y luego se busca la posición guardada.
+      play(tile.track, [tile.track]).then(() => {
+        const point = resumePoints.find((p) => p.track.id === tile.track!.id);
+        if (point) usePlayerStore.getState().seekTo(point.positionSeconds);
+      });
+      return;
+    }
+    if (tile.kind === 'track' && tile.track) {
+      play(tile.track, recentlyPlayed);
+      return;
+    }
+    if (tile.kind === 'track' && tile.trackId) {
+      // Vino del servidor sin la pista completa (sólo id/título/carátula):
+      // se busca al tocarla, no al cargar la rejilla entera.
+      setLoadingTrackId(tile.trackId);
+      api
+        .getTrackById(tile.trackId)
+        .then((track) => {
+          if (track) play(track, [track]);
+        })
+        .finally(() => setLoadingTrackId(null));
     }
   };
 
@@ -101,6 +147,11 @@ export function QuickAccessGrid() {
           {tile.kind === 'resume' && (
             <View style={styles.resumeBadge}>
               <Ionicons name="play" size={10} color={colors.text.onBrand} />
+            </View>
+          )}
+          {tile.trackId && loadingTrackId === tile.trackId && (
+            <View style={styles.resumeBadge}>
+              <Ionicons name="ellipsis-horizontal" size={10} color={colors.text.onBrand} />
             </View>
           )}
         </Pressable>

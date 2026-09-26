@@ -1,4 +1,5 @@
 import { http } from './httpClient';
+import type { TrackReviewStatus } from './moderation';
 
 export interface AdminArtist {
   id: string;
@@ -51,6 +52,53 @@ export function deleteTrack(trackId: string): Promise<{ message: string }> {
   return http.delete<{ message: string }>(`/admin/tracks/${trackId}`);
 }
 
+export interface VerificationCandidate {
+  id: string;
+  name: string;
+  imageUrl: string;
+  listeners: number;
+  streams: number;
+  score: number;
+  _count: { followers: number; tracks: number };
+}
+
+/**
+ * Artistas sin verificar, ordenados por el mismo ranking compuesto que
+ * decide quién va en primera fila (oyentes + reproducciones + seguidores).
+ * No es una cola de solicitudes — es "a quién le tocaría el check si
+ * alguien se pusiera a revisar ahora".
+ */
+export function fetchVerificationCandidates(limit = 30): Promise<{ candidates: VerificationCandidate[] }> {
+  return http.get(`/admin/artists/verification-candidates?limit=${limit}`);
+}
+
+export interface ArtistGrowth {
+  artistId: string;
+  name: string;
+  imageUrl: string;
+  isVerified: boolean;
+  currentListeners: number;
+  previousListeners: number;
+  growthPct: number | null;
+}
+
+/** Crecimiento período a período (oyentes distintos), comparando `days` contra los `days` anteriores. */
+export const fetchArtistGrowth = (days = 7, limit = 25) =>
+  http.get<{ days: number; artists: ArtistGrowth[] }>(`/admin/artists/growth?days=${days}&limit=${limit}`);
+
+export interface InactiveArtist {
+  artistId: string;
+  name: string;
+  imageUrl: string;
+  isVerified: boolean;
+  trackCount: number;
+  lastUploadAt: string;
+}
+
+/** Artistas con catálogo pero sin publicar nada en `months` meses. */
+export const fetchInactiveArtists = (months = 3, limit = 50) =>
+  http.get<{ months: number; artists: InactiveArtist[] }>(`/admin/artists/inactive?months=${months}&limit=${limit}`);
+
 /** Una canción tal como la ve el panel: incluye las pendientes y bloqueadas. */
 export interface AdminArtistTrack {
   id: string;
@@ -58,7 +106,7 @@ export interface AdminArtistTrack {
   coverUrl: string;
   duration: number;
   genre: string | null;
-  status: string;
+  status: TrackReviewStatus;
   isBlocked: boolean;
   blockedReason: string | null;
   createdAt: string;
@@ -78,7 +126,7 @@ export interface AdminArtistDetail {
     monthlyListeners: number;
     totalStreams: number;
     streamsLast14Days: number[];
-    topTracks: { trackId: string; title: string; streams: number }[];
+    topTracks: { trackId: string; title: string; coverUrl: string | null; duration: number; streams: number }[];
   };
   denunciasPendientes: number;
   tracks: AdminArtistTrack[];

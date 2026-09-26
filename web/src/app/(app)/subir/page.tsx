@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../lib/AuthProvider";
-import { getAuthToken } from "../../../lib/httpClient";
 import {
   fetchArtists,
   fetchMyArtistProfile,
@@ -18,8 +17,46 @@ import {
   describeAudioRejection,
   describeCoverRejection,
 } from "../../../lib/fileTypes";
-import { uploadTrack, UPLOAD_STEPS, type UploadStep } from "../../../lib/uploadPipeline";
+import {
+  uploadTrack,
+  uploadRelease,
+  UPLOAD_STEPS,
+  CREDIT_ROLE_LABEL,
+  type UploadStep,
+  type CreditDraft,
+  type CreditRole,
+} from "../../../lib/uploadPipeline";
 import { fetchGenreCatalog, type GenreOption } from "../../../lib/genres";
+import { getAuthToken } from "../../../lib/httpClient";
+
+/** Roles más comunes primero — el resto queda a un toque en el selector. */
+const CREDIT_ROLES: CreditRole[] = [
+  "FEATURED_ARTIST",
+  "PRODUCER",
+  "COMPOSER",
+  "WRITER",
+  "REMIXER",
+  "MIX_ENGINEER",
+  "MASTERING_ENGINEER",
+];
+
+type ReleaseType = "SINGLE" | "EP" | "ALBUM";
+
+const RELEASE_TYPE_LABEL: Record<ReleaseType, string> = {
+  SINGLE: "Sencillo",
+  EP: "EP",
+  ALBUM: "Álbum",
+};
+
+interface TrackSlot {
+  key: string;
+  title: string;
+  audio: File | null;
+}
+
+function nuevaRanura(): TrackSlot {
+  return { key: `${Date.now()}-${Math.random()}`, title: "", audio: null };
+}
 
 /**
  * Subir una canción desde la web.
@@ -99,15 +136,58 @@ export default function UploadPage() {
   const [artistas, setArtistas] = useState<ArtistSummary[]>([]);
   const [artistId, setArtistId] = useState("");
 
+  const [releaseType, setReleaseType] = useState<ReleaseType>("SINGLE");
+
+  // --- Sencillo ---
   const [title, setTitle] = useState("");
   const [lyrics, setLyrics] = useState("");
   const [genreId, setGenreId] = useState("");
   const [generos, setGeneros] = useState<GenreOption[]>([]);
   const [audio, setAudio] = useState<File | null>(null);
+
+  // --- EP / Álbum ---
+  const [albumTitle, setAlbumTitle] = useState("");
+  const [tracks, setTracks] = useState<TrackSlot[]>([nuevaRanura(), nuevaRanura()]);
+
+  // --- Compartido ---
   const [cover, setCover] = useState<File | null>(null);
   const [step, setStep] = useState<UploadStep | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [trackProgress, setTrackProgress] = useState<{ index: number; total: number } | null>(null);
+  const [credits, setCredits] = useState<CreditDraft[]>([]);
+  const [creditRole, setCreditRole] = useState<CreditRole>("PRODUCER");
+  const [creditName, setCreditName] = useState("");
+
+  const isMultiTrack = releaseType !== "SINGLE";
+
+  const addCredit = () => {
+    const name = creditName.trim();
+    if (!name) return;
+    setCredits((prev) => [...prev, { role: creditRole, name }]);
+    setCreditName("");
+  };
+
+  const removeCredit = (index: number) => {
+    setCredits((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addTrackSlot = () => setTracks((prev) => [...prev, nuevaRanura()]);
+  const removeTrackSlot = (key: string) => setTracks((prev) => (prev.length > 1 ? prev.filter((t) => t.key !== key) : prev));
+  const updateTrackSlot = (key: string, patch: Partial<TrackSlot>) =>
+    setTracks((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+
+  const usarAudioDeRanura = (key: string, files: FileList | null) => {
+    const file = elegido(files);
+    if (!file) return updateTrackSlot(key, { audio: null });
+    const rechazo = describeAudioRejection(file);
+    if (rechazo) {
+      setError(rechazo);
+      return updateTrackSlot(key, { audio: null });
+    }
+    setError(null);
+    updateTrackSlot(key, { audio: file });
+  };
   /**
    * Vacía los dos campos de archivo tras publicar.
    *
@@ -172,36 +252,68 @@ export default function UploadPage() {
   }, []);
 
   const busy = step !== null;
-  const canSubmit = Boolean(artistId && title.trim() && audio && cover) && !busy;
+  const readyTracks = tracks.filter((t) => t.title.trim() && t.audio);
+  const canSubmit =
+    Boolean(artistId && cover) &&
+    !busy &&
+    (isMultiTrack ? Boolean(albumTitle.trim()) && readyTracks.length >= 2 : Boolean(title.trim() && audio));
+
+  const submitSingle = async () => {
+    if (!audio || !cover) return;
+    const track = await uploadTrack({
+      artistId,
+      title: title.trim(),
+      audio,
+      cover,
+      credits,
+      lyrics,
+      genreId: genreId || null,
+      token: getAuthToken(),
+      onStep: setStep,
+    });
+    setDone(track.title);
+    setTitle("");
+    setLyrics("");
+    setGenreId("");
+    setAudio(null);
+  };
+
+  const submitRelease = async () => {
+    if (!cover) return;
+    const release = await uploadRelease({
+      artistId,
+      albumTitle: albumTitle.trim(),
+      albumType: releaseType as "EP" | "ALBUM",
+      cover,
+      tracks: readyTracks.map((t) => ({ title: t.title.trim(), audio: t.audio! })),
+      credits,
+      onProgress: ({ trackIndex, totalTracks, step: pipelineStep }) => {
+        setTrackProgress({ index: trackIndex + 1, total: totalTracks });
+        setStep(pipelineStep);
+      },
+    });
+    setDone(`${RELEASE_TYPE_LABEL[releaseType]} "${release.album.title}" (${release.tracks.length} canciones)`);
+    setAlbumTitle("");
+    setTracks([nuevaRanura(), nuevaRanura()]);
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canSubmit || !audio || !cover) return;
+    if (!canSubmit) return;
 
     setError(null);
     setDone(null);
     try {
-      const track = await uploadTrack({
-        artistId,
-        title: title.trim(),
-        audio,
-        cover,
-        lyrics,
-        genreId: genreId || null,
-        token: getAuthToken(),
-        onStep: setStep,
-      });
-      setDone(track.title);
-      setTitle("");
-      setLyrics("");
-      setGenreId("");
-      setAudio(null);
+      if (isMultiTrack) await submitRelease();
+      else await submitSingle();
       setCover(null);
+      setCredits([]);
       setTandaArchivos((n) => n + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo subir la canción.");
+      setError(err instanceof Error ? err.message : "No se pudo subir el lanzamiento.");
     } finally {
       setStep(null);
+      setTrackProgress(null);
     }
   };
 
@@ -269,17 +381,23 @@ export default function UploadPage() {
           </div>
         )}
 
-        <label className="flex flex-col gap-2 text-sm font-semibold">
-          Título
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            placeholder="Nombre de la canción"
-            className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
-          />
-        </label>
+        <div className="flex flex-col gap-2 text-sm font-semibold">
+          Qué vas a publicar
+          <div className="flex gap-1.5">
+            {(["SINGLE", "EP", "ALBUM"] as ReleaseType[]).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setReleaseType(type)}
+                className={`flex-1 rounded-full px-4 py-2 text-xs font-bold transition-colors ${
+                  releaseType === type ? "bg-brand text-black" : "bg-white/10 text-muted hover:text-foreground"
+                }`}
+              >
+                {RELEASE_TYPE_LABEL[type]}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/*
           El género lo elige quien sube, y puede dejarlo en blanco.
@@ -328,19 +446,7 @@ export default function UploadPage() {
         </label>
 
         <label className="flex flex-col gap-2 text-sm font-semibold">
-          Audio (.mp3, .wav, .m4a, .ogg, .flac)
-          <input
-            key={`audio-${tandaArchivos}`}
-            type="file"
-            accept={AUDIO_ACCEPT}
-            onChange={(e) => usarArchivo(e.target.files, describeAudioRejection, setAudio, setError)}
-            required
-            className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
-          />
-        </label>
-
-        <label className="flex flex-col gap-2 text-sm font-semibold">
-          Portada (.jpg, .png, .webp)
+          Portada (.jpg, .png, .webp) {isMultiTrack && `del ${RELEASE_TYPE_LABEL[releaseType].toLowerCase()}`}
           <input
             key={`portada-${tandaArchivos}`}
             type="file"
@@ -351,6 +457,145 @@ export default function UploadPage() {
           />
         </label>
 
+        {isMultiTrack ? (
+          <>
+            <label className="flex flex-col gap-2 text-sm font-semibold">
+              Título del {RELEASE_TYPE_LABEL[releaseType].toLowerCase()}
+              <input
+                type="text"
+                value={albumTitle}
+                onChange={(e) => setAlbumTitle(e.target.value)}
+                required
+                placeholder={`Nombre del ${RELEASE_TYPE_LABEL[releaseType].toLowerCase()}`}
+                className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2 text-sm font-semibold">
+              Canciones <span className="font-normal text-muted">({readyTracks.length} lista{readyTracks.length === 1 ? "" : "s"})</span>
+              <div className="flex flex-col gap-2">
+                {tracks.map((slot, index) => (
+                  <div key={slot.key} className="flex items-center gap-2 rounded-lg border border-white/10 bg-surface p-2.5">
+                    <span className="w-5 shrink-0 text-center text-xs font-normal text-muted">{index + 1}</span>
+                    <input
+                      type="text"
+                      value={slot.title}
+                      onChange={(e) => updateTrackSlot(slot.key, { title: e.target.value })}
+                      placeholder={`Canción ${index + 1}`}
+                      className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/25 px-3 py-2 text-sm font-normal outline-none focus:border-brand"
+                    />
+                    <input
+                      type="file"
+                      accept={AUDIO_ACCEPT}
+                      onChange={(e) => usarAudioDeRanura(slot.key, e.target.files)}
+                      className="w-40 shrink-0 text-xs font-normal file:mr-2 file:rounded-full file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-[11px] file:font-semibold file:text-foreground"
+                    />
+                    {tracks.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeTrackSlot(slot.key)}
+                        aria-label="Quitar canción"
+                        className="shrink-0 text-muted hover:text-danger"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={addTrackSlot}
+                className="self-start rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-white/15"
+              >
+                + Agregar canción
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="flex flex-col gap-2 text-sm font-semibold">
+              Título
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                placeholder="Nombre de la canción"
+                className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal outline-none focus:border-brand"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-semibold">
+              Audio (.mp3, .wav, .m4a, .ogg, .flac)
+              <input
+                key={`audio-${tandaArchivos}`}
+                type="file"
+                accept={AUDIO_ACCEPT}
+                onChange={(e) => usarArchivo(e.target.files, describeAudioRejection, setAudio, setError)}
+                required
+                className="rounded-lg border border-white/15 bg-black/25 px-4 py-3 text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-foreground"
+              />
+            </label>
+          </>
+        )}
+
+        <div className="flex flex-col gap-2 text-sm font-semibold">
+          Créditos <span className="font-normal text-muted">(opcional — compositor, productor, artista invitado…)</span>
+          <div className="flex flex-wrap gap-1.5">
+            {CREDIT_ROLES.map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => setCreditRole(role)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  creditRole === role ? "bg-brand text-black" : "bg-white/10 text-muted hover:text-foreground"
+                }`}
+              >
+                {CREDIT_ROLE_LABEL[role]}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={creditName}
+              onChange={(e) => setCreditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCredit();
+                }
+              }}
+              placeholder="Nombre"
+              className="flex-1 rounded-lg border border-white/15 bg-black/25 px-4 py-2.5 text-sm font-normal outline-none focus:border-brand"
+            />
+            <button
+              type="button"
+              onClick={addCredit}
+              className="rounded-lg bg-white/10 px-4 text-sm font-semibold transition-colors hover:bg-white/15"
+            >
+              Agregar
+            </button>
+          </div>
+          {credits.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {credits.map((credit, index) => (
+                <li key={`${credit.role}-${credit.name}-${index}`}>
+                  <button
+                    type="button"
+                    onClick={() => removeCredit(index)}
+                    className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-xs font-normal text-foreground ring-1 ring-inset ring-white/10 hover:ring-danger/40"
+                  >
+                    {CREDIT_ROLE_LABEL[credit.role]}: {credit.name}
+                    <span aria-hidden>×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {error && (
           <p role="alert" className="rounded-lg bg-danger/10 px-4 py-3 text-sm font-semibold text-danger">
             {error}
@@ -359,6 +604,11 @@ export default function UploadPage() {
 
         {busy && (
           <ol className="flex flex-col gap-1.5 rounded-lg bg-surface p-4 text-sm">
+            {trackProgress && (
+              <li className="mb-1 font-bold text-brand">
+                Canción {trackProgress.index} de {trackProgress.total}
+              </li>
+            )}
             {UPLOAD_STEPS.map((label, index) => (
               <li
                 key={label}

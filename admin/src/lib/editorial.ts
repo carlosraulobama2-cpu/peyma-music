@@ -28,6 +28,9 @@ export interface EditorialSection {
   position: number;
   isPublished: boolean;
   maxItems: number;
+  /** Ventana de publicación programada — ninguna reemplaza a `isPublished`, sólo acotan cuándo dentro de eso. */
+  publishAt: string | null;
+  unpublishAt: string | null;
   _count: { items: number };
 }
 
