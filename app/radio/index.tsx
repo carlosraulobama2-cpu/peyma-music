@@ -12,9 +12,11 @@ import {
   getTopStations,
   registerStationClick,
   logRadioOpen,
+  getAutoRadioPlaylists,
   stationToTrack,
   RADIO_TRACK_ID_PREFIX,
   type RadioStation,
+  type RadioPlaylist,
 } from '../../src/services';
 import { useAsyncData, useAudioPlayer } from '../../src/hooks';
 import { EmptyState, Skeleton, MiniPlayer } from '../../src/components';
@@ -45,13 +47,16 @@ const TAGS: { id: string; label: string }[] = [
   { id: 'talk', label: 'Talk' },
 ];
 
+/** Un color por tarjeta de playlist automática, en el mismo orden en que las arma `getAutoRadioPlaylists`. */
+const PLAYLIST_COLORS = ['#1DB954', '#FF6B6B', '#B478FF', '#FFC94D', '#4AD9E8', '#FF8FB1'];
+
 export default function RadioScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(makeStyles);
 
-  const { currentTrack, isPlaying, isBuffering, play, togglePlayPause } = useAudioPlayer();
+  const { currentTrack, isPlaying, isBuffering, radioNowPlaying, play, togglePlayPause } = useAudioPlayer();
 
   const [activeTag, setActiveTag] = useState('');
 
@@ -74,6 +79,19 @@ export default function RadioScreen() {
   const activeStationId = currentTrack?.id.startsWith(RADIO_TRACK_ID_PREFIX)
     ? currentTrack.id.slice(RADIO_TRACK_ID_PREFIX.length)
     : null;
+
+  const { data: autoPlaylists } = useAsyncData<RadioPlaylist[]>(
+    () => getAutoRadioPlaylists(),
+    [],
+    'No pudimos armar las playlists de radio.',
+  );
+
+  const playStations = (toPlay: RadioStation[]) => {
+    if (toPlay.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    registerStationClick(toPlay[0]!.id);
+    play(stationToTrack(toPlay[0]!), toPlay.map(stationToTrack));
+  };
 
   const handleStationPress = (station: RadioStation) => {
     if (!stations) return;
@@ -118,6 +136,38 @@ export default function RadioScreen() {
           <Text style={styles.heroSubtitle}>Estaciones reales de todo el mundo, vía Radio Browser</Text>
         </View>
       </View>
+
+      {autoPlaylists && autoPlaylists.length > 0 && (
+        <View style={styles.autoPlaylistsSection}>
+          <Text style={styles.autoPlaylistsTitle}>Playlists de radio</Text>
+          <FlashList
+            data={autoPlaylists}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.autoPlaylistsContent}
+            renderItem={({ item, index }) => (
+              <Pressable
+                onPress={() => playStations(item.stations)}
+                style={[styles.autoPlaylistCard, { backgroundColor: `${PLAYLIST_COLORS[index % PLAYLIST_COLORS.length]}22` }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Reproducir ${item.name}, ${item.stations.length} estaciones`}
+              >
+                <Ionicons
+                  name="radio"
+                  size={20}
+                  color={PLAYLIST_COLORS[index % PLAYLIST_COLORS.length]}
+                  style={styles.autoPlaylistIcon}
+                />
+                <Text style={styles.autoPlaylistName} numberOfLines={2}>
+                  {item.name}
+                </Text>
+                <Text style={styles.autoPlaylistCount}>{item.stations.length} estaciones</Text>
+              </Pressable>
+            )}
+          />
+        </View>
+      )}
 
       <FlashList
         data={TAGS}
@@ -177,11 +227,17 @@ export default function RadioScreen() {
                     <Text style={[styles.stationName, isActive && styles.stationNameActive]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={styles.stationMeta} numberOfLines={1}>
-                      {[item.tags[0], item.countryCode, item.bitrate ? `${item.bitrate} kbps` : null]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </Text>
+                    {isActive && radioNowPlaying ? (
+                      <Text style={styles.nowPlaying} numberOfLines={1}>
+                        ♪ {radioNowPlaying}
+                      </Text>
+                    ) : (
+                      <Text style={styles.stationMeta} numberOfLines={1}>
+                        {[item.tags[0], item.countryCode, item.bitrate ? `${item.bitrate} kbps` : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.playButton}>
                     {isActive && isBuffering ? (
@@ -265,6 +321,39 @@ const makeStyles = ({ colors }: Theme) => ({
     fontFamily: typography.family.regular,
     fontSize: typography.size.sm,
   },
+  autoPlaylistsSection: {
+    paddingTop: spacing.lg,
+  },
+  autoPlaylistsTitle: {
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    color: colors.text.primary,
+    fontFamily: typography.family.bold,
+    fontSize: typography.size.lg,
+  },
+  autoPlaylistsContent: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  autoPlaylistCard: {
+    width: 140,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  autoPlaylistIcon: {
+    marginBottom: spacing.sm,
+  },
+  autoPlaylistName: {
+    color: colors.text.primary,
+    fontFamily: typography.family.bold,
+    fontSize: typography.size.sm,
+    marginBottom: spacing.xs,
+  },
+  autoPlaylistCount: {
+    color: colors.text.secondary,
+    fontFamily: typography.family.regular,
+    fontSize: typography.size.xs,
+  },
   tagsContent: {
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -332,6 +421,11 @@ const makeStyles = ({ colors }: Theme) => ({
     fontFamily: typography.family.regular,
     fontSize: typography.size.sm,
     textTransform: 'uppercase' as const,
+  },
+  nowPlaying: {
+    color: colors.brand[500],
+    fontFamily: typography.family.medium,
+    fontSize: typography.size.sm,
   },
   playButton: {
     width: 36,

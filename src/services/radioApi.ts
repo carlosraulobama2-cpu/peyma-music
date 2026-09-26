@@ -137,6 +137,55 @@ export function logRadioOpen(): void {
   http.post('/radio/opened', { platform: 'APP' }).catch(() => {});
 }
 
+export interface RadioPlaylist {
+  id: string;
+  name: string;
+  stations: RadioStation[];
+}
+
+/**
+ * Géneros sobre los que se arma cada "playlist" automática de radios.
+ *
+ * Es una lista curada, no las etiquetas libres de Radio Browser (que son
+ * texto sin moderar y a veces vienen sucias o en otros idiomas) — mismo
+ * criterio que ya se usa para los chips de filtro de esta pantalla.
+ */
+const AUTO_PLAYLIST_TAGS: { id: string; name: string }[] = [
+  { id: '', name: 'Las más escuchadas' },
+  { id: 'pop', name: 'Radios de Pop' },
+  { id: 'rock', name: 'Radios de Rock' },
+  { id: 'reggaeton', name: 'Radios de Reggaetón' },
+  { id: 'electronic', name: 'Radios de Electrónica' },
+  { id: 'jazz', name: 'Radios de Jazz' },
+];
+
+/**
+ * "Playlists" automáticas de ESTACIONES (no de canciones) agrupadas por
+ * género y ya nombradas — lo más cerca que se puede llegar de "un sistema
+ * que arma y nombra playlists con radios" sin inventar datos por canción
+ * que Radio Browser no da (ver la conversación sobre por qué no se puede
+ * convertir lo que suena en una radio en un sencillo del catálogo).
+ *
+ * No se guardan en ningún lado: se arman de nuevo cada vez que se entra a
+ * la pantalla, así que siempre reflejan lo que está sonando de verdad en
+ * cada categoría en vez de una lista que se queda vieja.
+ */
+export async function getAutoRadioPlaylists(stationsPerPlaylist = 10): Promise<RadioPlaylist[]> {
+  const results = await Promise.allSettled(
+    AUTO_PLAYLIST_TAGS.map(async (tag) => {
+      const stations = tag.id
+        ? await searchStations({ tag: tag.id, limit: stationsPerPlaylist })
+        : await getTopStations(stationsPerPlaylist);
+      return { id: tag.id || 'top', name: tag.name, stations };
+    }),
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<RadioPlaylist> => r.status === 'fulfilled')
+    .map((r) => r.value)
+    .filter((playlist) => playlist.stations.length > 0);
+}
+
 /** Prefijo que distingue una estación de radio de una pista real del catálogo — ver `isRadioTrack` y `playerStore`. */
 export const RADIO_TRACK_ID_PREFIX = 'radio:';
 

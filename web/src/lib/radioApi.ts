@@ -128,6 +128,62 @@ export function logRadioOpen(): void {
   http.post("/radio/opened", { platform: "WEB" }).catch(() => {});
 }
 
+export interface RadioPlaylist {
+  id: string;
+  name: string;
+  stations: RadioStation[];
+}
+
+/** Espejo de la lista curada en la app móvil — ver `src/services/radioApi.ts`. */
+const AUTO_PLAYLIST_TAGS: { id: string; name: string }[] = [
+  { id: "", name: "Las más escuchadas" },
+  { id: "pop", name: "Radios de Pop" },
+  { id: "rock", name: "Radios de Rock" },
+  { id: "reggaeton", name: "Radios de Reggaetón" },
+  { id: "electronic", name: "Radios de Electrónica" },
+  { id: "jazz", name: "Radios de Jazz" },
+];
+
+/**
+ * "Playlists" automáticas de ESTACIONES agrupadas por género y ya
+ * nombradas — se arman de nuevo cada vez que se entra a la pantalla, no se
+ * guardan en ningún lado. Ver la versión de la app para la explicación
+ * completa de por qué es esto y no canciones extraídas de la radio.
+ */
+export async function getAutoRadioPlaylists(stationsPerPlaylist = 10): Promise<RadioPlaylist[]> {
+  const results = await Promise.allSettled(
+    AUTO_PLAYLIST_TAGS.map(async (tag) => {
+      const stations = tag.id
+        ? await searchStations({ tag: tag.id, limit: stationsPerPlaylist })
+        : await getTopStations(stationsPerPlaylist);
+      return { id: tag.id || "top", name: tag.name, stations };
+    }),
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<RadioPlaylist> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((playlist) => playlist.stations.length > 0);
+}
+
+/**
+ * "Sonando ahora" de una estación — un `<audio>` de navegador nunca ve la
+ * metadata ICY que sí lee la app (react-native-track-player la expone
+ * nativa), así que acá hay que pedírsela a nuestro propio backend, que abre
+ * la conexión por nosotros y la relee — ver backend/src/services/icyMetadata.ts.
+ * `null` si la estación no anuncia esa metadata (muchas no lo hacen).
+ */
+export async function fetchNowPlaying(stationId: string, streamUrl: string): Promise<string | null> {
+  try {
+    const res = await http.get<{ title: string | null }>(
+      `/radio/now-playing?stationId=${encodeURIComponent(stationId)}&streamUrl=${encodeURIComponent(streamUrl)}`,
+    );
+    return res.title;
+  } catch {
+    return null;
+  }
+}
+
 /** Prefijo que distingue una estación de radio de una pista real del catálogo. */
 export const RADIO_TRACK_ID_PREFIX = "radio:";
 

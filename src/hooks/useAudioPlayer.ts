@@ -20,6 +20,8 @@ export interface UseAudioPlayerResult extends PlayerState {
   /** Progreso 0–1, ya clampeado — listo para un slider. */
   progressRatio: number;
   sleepTimer: SleepTimer;
+  /** Título ICY de la estación actual ("Artista - Canción"), o `null` si no aplica — ver `playerStore`. */
+  radioNowPlaying: string | null;
 
   play: (track: Track, queue?: Track[]) => Promise<void>;
   pause: () => Promise<void>;
@@ -51,6 +53,7 @@ export function useAudioPlayer(): UseAudioPlayerResult {
   const volume = usePlayerStore((s) => s.volume);
   const playbackError = usePlayerStore((s) => s.playbackError);
   const sleepTimerEndsAt = usePlayerStore((s) => s.sleepTimerEndsAt);
+  const radioNowPlaying = usePlayerStore((s) => s.radioNowPlaying);
 
   const storePlay = usePlayerStore((s) => s.play);
   const storePause = usePlayerStore((s) => s.pause);
@@ -119,6 +122,7 @@ export function useAudioPlayer(): UseAudioPlayerResult {
     playbackError,
     progressRatio: duration > 0 ? Math.min(1, Math.max(0, progress / duration)) : 0,
     sleepTimer,
+    radioNowPlaying,
 
     play: storePlay,
     pause: storePause,

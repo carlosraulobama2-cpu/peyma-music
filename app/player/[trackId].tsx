@@ -35,6 +35,7 @@ export default function PlayerFullScreen() {
     volume,
     playbackError,
     sleepTimer,
+    radioNowPlaying,
     togglePlayPause,
     next,
     previous,
@@ -245,7 +246,9 @@ export default function PlayerFullScreen() {
         {isRadioTrack(currentTrack) ? (
           <View style={styles.liveRow}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>TRANSMISIÓN EN VIVO</Text>
+            <Text style={styles.liveLabel} numberOfLines={1}>
+              {radioNowPlaying ? `SONANDO: ${radioNowPlaying.toUpperCase()}` : 'TRANSMISIÓN EN VIVO'}
+            </Text>
           </View>
         ) : (
           <ProgressBar progress={progress} duration={duration || currentTrack.duration} onSeek={seekTo} />
@@ -473,6 +476,7 @@ const makeStyles = ({ colors }: Theme) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+    paddingHorizontal: spacing.lg,
     gap: spacing.sm,
     marginVertical: spacing.lg,
   },
@@ -481,8 +485,10 @@ const makeStyles = ({ colors }: Theme) => ({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#FF5A5A',
+    flexShrink: 0,
   },
   liveLabel: {
+    flexShrink: 1,
     color: colors.text.secondary,
     fontFamily: typography.family.bold,
     fontSize: typography.size.xs,

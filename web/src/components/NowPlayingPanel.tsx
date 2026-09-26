@@ -6,6 +6,7 @@ import { CoverImage } from "./CoverImage";
 import { LikeButton } from "./LikeButton";
 import { LyricsPanel } from "./LyricsPanel";
 import { isRadioTrack } from "../lib/radioApi";
+import { useRadioNowPlaying } from "../lib/useRadioNowPlaying";
 
 const numberFormat = new Intl.NumberFormat("es");
 
@@ -18,6 +19,8 @@ export function NowPlayingPanel({ onClose }: NowPlayingPanelProps) {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
+  // Antes del `return null`: los hooks no pueden llamarse condicionalmente.
+  const nowPlaying = useRadioNowPlaying();
 
   if (!currentTrack) return null;
 
@@ -65,6 +68,12 @@ export function NowPlayingPanel({ onClose }: NowPlayingPanelProps) {
                   En vivo
                 </dd>
               </div>
+              {nowPlaying && (
+                <div>
+                  <dt className="text-muted">Sonando ahora</dt>
+                  <dd className="font-semibold">{nowPlaying}</dd>
+                </div>
+              )}
               {currentTrack.genre && (
                 <div>
                   <dt className="text-muted">Género</dt>

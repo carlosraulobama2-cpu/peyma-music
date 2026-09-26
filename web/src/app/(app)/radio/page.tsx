@@ -7,11 +7,14 @@ import {
   getTopStations,
   registerStationClick,
   logRadioOpen,
+  getAutoRadioPlaylists,
   stationToCatalogTrack,
   RADIO_TRACK_ID_PREFIX,
   type RadioStation,
+  type RadioPlaylist,
 } from "../../../lib/radioApi";
 import { CoverImage } from "../../../components/CoverImage";
+import { useRadioNowPlaying } from "../../../lib/useRadioNowPlaying";
 
 /**
  * Radio en vivo, vía Radio Browser (radio-browser.info) — misma base
@@ -37,18 +40,33 @@ const TAGS: { id: string; label: string }[] = [
   { id: "talk", label: "Talk" },
 ];
 
+const PLAYLIST_COLORS = ["#1DB954", "#FF6B6B", "#B478FF", "#FFC94D", "#4AD9E8", "#FF8FB1"];
+
 export default function RadioPage() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const play = usePlayerStore((s) => s.play);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const nowPlaying = useRadioNowPlaying();
 
   const [activeTag, setActiveTag] = useState("");
   const [stations, setStations] = useState<RadioStation[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [autoPlaylists, setAutoPlaylists] = useState<RadioPlaylist[] | null>(null);
 
   useEffect(() => {
     logRadioOpen();
+    let cancelled = false;
+    getAutoRadioPlaylists()
+      .then((data) => {
+        if (!cancelled) setAutoPlaylists(data);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoPlaylists([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const load = useCallback((tag: string, cancelledRef: { current: boolean }) => {
@@ -94,6 +112,12 @@ export default function RadioPage() {
     play(stationToCatalogTrack(station), stations.map(stationToCatalogTrack));
   };
 
+  const playAutoPlaylist = (playlist: RadioPlaylist) => {
+    if (playlist.stations.length === 0) return;
+    registerStationClick(playlist.stations[0]!.id);
+    play(stationToCatalogTrack(playlist.stations[0]!), playlist.stations.map(stationToCatalogTrack));
+  };
+
   return (
     <main className="flex-1 px-6 py-8 pb-32 sm:px-10">
       <header className="mb-8">
@@ -107,6 +131,31 @@ export default function RadioPage() {
           Peyma.
         </p>
       </header>
+
+      {autoPlaylists && autoPlaylists.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-lg font-bold">Playlists de radio</h2>
+          <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-2">
+            {autoPlaylists.map((playlist, index) => {
+              const color = PLAYLIST_COLORS[index % PLAYLIST_COLORS.length];
+              return (
+                <button
+                  key={playlist.id}
+                  onClick={() => playAutoPlaylist(playlist)}
+                  className="w-36 shrink-0 rounded-xl p-4 text-left transition-transform hover:scale-105"
+                  style={{ backgroundColor: `${color}22` }}
+                >
+                  <span className="mb-3 block text-xl" style={{ color }} aria-hidden>
+                    📻
+                  </span>
+                  <p className="text-sm font-bold">{playlist.name}</p>
+                  <p className="mt-1 text-xs text-muted">{playlist.stations.length} estaciones</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-2">
         {TAGS.map((tag) => (
@@ -148,11 +197,15 @@ export default function RadioPage() {
                   <CoverImage src={station.favicon} alt={station.name} size={48} rounded="rounded-lg" glow={false} />
                   <div className="min-w-0 flex-1">
                     <p className={`truncate text-sm font-semibold ${isActive ? "text-brand" : ""}`}>{station.name}</p>
-                    <p className="truncate text-xs uppercase text-muted">
-                      {[station.tags[0], station.countryCode, station.bitrate ? `${station.bitrate} kbps` : null]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
+                    {isActive && nowPlaying ? (
+                      <p className="truncate text-xs font-semibold text-brand">♪ {nowPlaying}</p>
+                    ) : (
+                      <p className="truncate text-xs uppercase text-muted">
+                        {[station.tags[0], station.countryCode, station.bitrate ? `${station.bitrate} kbps` : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
                   </div>
                   <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-sm">
                     {isActive && isPlaying ? "⏸" : "▶"}

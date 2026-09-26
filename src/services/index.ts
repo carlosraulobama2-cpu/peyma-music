@@ -21,8 +21,10 @@ export {
   getTopStations,
   registerStationClick,
   logRadioOpen,
+  getAutoRadioPlaylists,
   stationToTrack,
   isRadioTrack,
   RADIO_TRACK_ID_PREFIX,
   type RadioStation,
+  type RadioPlaylist,
 } from './radioApi';

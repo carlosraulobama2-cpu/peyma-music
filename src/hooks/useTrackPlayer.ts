@@ -8,7 +8,33 @@ import type { PlaybackProgressUpdatedEvent, PlaybackActiveTrackChangedEvent } fr
 import { usePlayerStore } from '../store/playerStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { toast } from '../store/toastStore';
+import { isRadioTrack } from '../services/radioApi';
 import type { RepeatMode, Track } from '../types';
+
+/**
+ * `AudioCommonMetadata`/`AudioMetadataReceivedEvent` existen en
+ * react-native-track-player (ver `Event.MetadataCommonReceived` y
+ * `Event.MetadataTimedReceived`) pero el paquete no los re-exporta desde su
+ * índice público — sólo se usan internamente. Se declara acá el subconjunto
+ * real que hace falta leer, en vez de importar una ruta interna no soportada.
+ */
+interface IcyCommonMetadata {
+  title?: string;
+  artist?: string;
+}
+
+/**
+ * "Artista - Canción" a partir de la metadata ICY que manda la propia
+ * emisora. La mayoría de estaciones mandan todo en `title` sin separar
+ * artista (así es como llega `StreamTitle` de Icecast/Shoutcast) — si
+ * `artist` viene aparte, se antepone; si no, se usa `title` tal cual.
+ */
+function formatIcyTitle(metadata: IcyCommonMetadata): string | null {
+  const title = metadata.title?.trim();
+  if (!title) return null;
+  const artist = metadata.artist?.trim();
+  return artist && !title.toLowerCase().includes(artist.toLowerCase()) ? `${artist} - ${title}` : title;
+}
 
 /** No hace falta persistir la posición en cada tick de progreso (~1/s) — cada tantos segundos alcanza. */
 const RESUME_POINT_SAVE_INTERVAL_MS = 10_000;
@@ -33,6 +59,7 @@ export function useTrackPlayer(): true {
   const setStoreCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setStoreIsBuffering = usePlayerStore((s) => s.setIsBuffering);
   const setPlaybackError = usePlayerStore((s) => s.setPlaybackError);
+  const setRadioNowPlaying = usePlayerStore((s) => s.setRadioNowPlaying);
 
   const queueRef = useRef(queue);
   useEffect(() => {
@@ -134,6 +161,22 @@ export function useTrackPlayer(): true {
         const message = 'No pudimos seguir reproduciendo. Revisa tu conexión e intenta de nuevo.';
         setPlaybackError(message);
         toast.error(message);
+      }),
+
+      // "Sonando ahora" de una radio (metadata ICY) — sólo aplica a
+      // estaciones, y sólo a algunas: no todas anuncian esto. Llega por acá
+      // porque el reproductor nativo (ExoPlayer/AVPlayer) ya la decodifica
+      // del propio stream de audio; nadie tiene que pedirla aparte.
+      TrackPlayer.addEventListener(Event.MetadataCommonReceived, (event: { metadata: IcyCommonMetadata }) => {
+        const track = usePlayerStore.getState().currentTrack;
+        if (!track || !isRadioTrack(track)) return;
+        setRadioNowPlaying(formatIcyTitle(event.metadata));
+      }),
+      TrackPlayer.addEventListener(Event.MetadataTimedReceived, (event: { metadata: IcyCommonMetadata[] }) => {
+        const track = usePlayerStore.getState().currentTrack;
+        if (!track || !isRadioTrack(track)) return;
+        const withTitle = event.metadata.find((m) => m.title?.trim());
+        if (withTitle) setRadioNowPlaying(formatIcyTitle(withTitle));
       }),
       ];
     } catch (error) {

@@ -91,6 +91,15 @@ interface PlayerStore extends PlayerState {
   remoteDeviceName: string | null;
 
   /**
+   * Título ICY de la estación de radio actual ("Artista - Canción", tal
+   * cual lo anuncia la propia emisora) — `null` si no hay radio sonando o si
+   * esta estación en particular no manda esa metadata. Lo llena
+   * `useTrackPlayer()` desde el evento nativo del reproductor; ver
+   * `radioApi.ts` sobre por qué no se puede pedir aparte.
+   */
+  radioNowPlaying: string | null;
+
+  /**
    * `previewToken`: sólo lo pasa la pantalla "Mis canciones" al escuchar una
    * subida propia todavía no aprobada — ver `resolveStreamUrl`.
    */
@@ -116,6 +125,7 @@ interface PlayerStore extends PlayerState {
   setIsPlaying: (isPlaying: boolean) => void;
   setIsBuffering: (isBuffering: boolean) => void;
   setCurrentTrack: (track: Track | null, index?: number) => void;
+  setRadioNowPlaying: (title: string | null) => void;
   toggleCrossfade: () => void;
   setCrossfadeDuration: (durationMs: number) => void;
 
@@ -151,6 +161,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   playbackError: null,
   isRemoteCommand: false,
   remoteDeviceName: null,
+  radioNowPlaying: null,
 
   play: async (track, queueOverride, previewToken) => {
     const newQueue = queueOverride ?? [track];
@@ -189,6 +200,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isPlaying: true,
         isBuffering: false,
         progress: 0,
+        // Se limpia acá y no se vuelve a tocar hasta que llegue el próximo
+        // evento nativo: si la estación no manda metadata ICY, "sonando
+        // ahora" debe quedarse vacío, no arrastrar el título de la anterior.
+        radioNowPlaying: null,
       });
     } catch (error) {
       console.error('[playerStore] Error al reproducir:', error);
@@ -374,6 +389,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   setIsBuffering: (isBuffering) => set({ isBuffering }),
   setCurrentTrack: (track, index) =>
     set((state) => ({ currentTrack: track, queueIndex: index ?? state.queueIndex })),
+  setRadioNowPlaying: (title) => set({ radioNowPlaying: title }),
   toggleCrossfade: () => set((state) => ({ isCrossfadeEnabled: !state.isCrossfadeEnabled })),
   setCrossfadeDuration: (durationMs) => set({ crossfadeDurationMs: durationMs }),
 

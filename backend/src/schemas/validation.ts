@@ -250,6 +250,15 @@ export const logRadioOpenSchema = z.object({
   platform: z.enum(['APP', 'WEB']),
 });
 
+/** Id de estación de Radio Browser (UUID, no cuid) + su URL de stream, para "sonando ahora". */
+export const radioNowPlayingQuerySchema = z.object({
+  stationId: z.string().uuid(),
+  // La URL de stream la manda el cliente porque ya la tiene (Radio Browser
+  // se la dio); el backend la vuelve a validar (esquema, host no privado)
+  // antes de conectarse — ver services/icyMetadata.ts.
+  streamUrl: z.string().url().max(2048),
+});
+
 // --- Reproducciones (ver services/streamLog.ts, routes/streams.ts) ---
 
 export const logStreamSchema = z.object({
