@@ -50,6 +50,7 @@ import {
   getTrendingTracks,
   getTopSearches,
   getListeningHeatmap,
+  getRetentionStats,
   ROLLING_WINDOW_DAYS as AUDIENCE_WINDOW_DAYS,
   getPlayCounts,
 } from '../services/audienceStats';
@@ -1431,6 +1432,12 @@ router.get('/audience/heatmap', async (req: AuthRequest, res: Response) => {
   const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 90) : AUDIENCE_WINDOW_DAYS;
   const cells = await getListeningHeatmap(days);
   res.json({ windowDays: days, cells });
+});
+
+/** Retención por cohorte: 1/7/30 días desde la primera escucha. */
+router.get('/audience/retention', async (_req: AuthRequest, res: Response) => {
+  const stats = await getRetentionStats();
+  res.json(stats);
 });
 
 /** Qué busca la gente, y qué busca sin encontrar nada. */

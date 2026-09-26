@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock } from 'lucide-react';
+import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock, Repeat } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import {
@@ -8,6 +8,7 @@ import {
   fetchTopSearches,
   fetchSignupFailures,
   fetchListeningHeatmap,
+  fetchRetentionStats,
   formatHours,
   SIGNUP_STAGE_LABELS,
   type TopListener,
@@ -16,6 +17,7 @@ import {
   type SignupAttempt,
   type SignupStage,
   type HeatmapCell,
+  type RetentionStats,
 } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
 
@@ -30,12 +32,13 @@ import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
  * las dos cosas como si fueran medición.
  */
 
-type Tab = 'oyentes' | 'artistas' | 'horarios' | 'busquedas' | 'altas';
+type Tab = 'oyentes' | 'artistas' | 'horarios' | 'retencion' | 'busquedas' | 'altas';
 
 const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'oyentes', label: 'Oyentes', icon: Clock },
   { id: 'artistas', label: 'Artistas por tiempo', icon: TrendingUp },
   { id: 'horarios', label: 'Horarios', icon: CalendarClock },
+  { id: 'retencion', label: 'Retención', icon: Repeat },
   { id: 'busquedas', label: 'Qué se busca', icon: SearchIcon },
   { id: 'altas', label: 'Altas fallidas', icon: UserX },
 ];
@@ -67,6 +70,7 @@ export function AudiencePage() {
   const [listeners, setListeners] = useState<TopListener[] | null>(null);
   const [artists, setArtists] = useState<TopArtistByTime[] | null>(null);
   const [heatmap, setHeatmap] = useState<HeatmapCell[] | null>(null);
+  const [retention, setRetention] = useState<RetentionStats | null>(null);
   const [searches, setSearches] = useState<{ all: TopSearch[]; empty: TopSearch[] } | null>(null);
   const [signups, setSignups] = useState<{ byStage: Partial<Record<SignupStage, number>>; attempts: SignupAttempt[] } | null>(
     null,
@@ -90,6 +94,10 @@ export function AudiencePage() {
     } else if (tab === 'horarios') {
       fetchListeningHeatmap()
         .then((r) => !cancelled && setHeatmap(r.cells))
+        .catch(fail);
+    } else if (tab === 'retencion') {
+      fetchRetentionStats()
+        .then((r) => !cancelled && setRetention(r))
         .catch(fail);
     } else if (tab === 'busquedas') {
       fetchTopSearches()
@@ -278,6 +286,8 @@ export function AudiencePage() {
 
       {tab === 'horarios' && (!heatmap ? <SkeletonList /> : <ListeningHeatmap cells={heatmap} />)}
 
+      {tab === 'retencion' && (!retention ? <SkeletonList /> : <RetentionPanel stats={retention} />)}
+
       {tab === 'busquedas' &&
         (!searches ? (
           <SkeletonList />
@@ -418,6 +428,45 @@ function ListeningHeatmap({ cells }: { cells: HeatmapCell[] }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Tarjetas de retención acumulada: día 1 ⊂ semana ⊂ mes, cada una sobre la cohorte con 30 días o más desde su primera escucha. */
+function RetentionPanel({ stats }: { stats: RetentionStats }) {
+  if (stats.cohortSize === 0) {
+    return <Empty>Todavía no hay usuarios con 30 días o más desde su primera escucha.</Empty>;
+  }
+
+  const rows: { label: string; returned: number; hint: string }[] = [
+    { label: 'Volvió al día siguiente', returned: stats.returnedDay1, hint: 'Entre el día 1 y el día 2' },
+    { label: 'Volvió dentro de la semana', returned: stats.returnedDay7, hint: 'En los primeros 7 días' },
+    { label: 'Volvió dentro del mes', returned: stats.returnedDay30, hint: 'En los primeros 30 días' },
+  ];
+
+  return (
+    <div>
+      <p className="mb-6 text-sm text-muted">
+        Sobre <span className="font-semibold text-foreground">{stats.cohortSize}</span> usuario(s) cuya primera
+        escucha fue hace 30 días o más — a los únicos a quienes ya les dio tiempo de completar las tres ventanas.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {rows.map((row) => {
+          const pct = Math.round((row.returned / stats.cohortSize) * 100);
+          return (
+            <div key={row.label} className="rounded-xl border border-white/10 bg-surface p-5">
+              <p className="text-sm font-semibold">{row.label}</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-brand">{pct}%</p>
+              <p className="mt-1 text-xs text-muted">
+                {row.returned} de {stats.cohortSize} · {row.hint}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

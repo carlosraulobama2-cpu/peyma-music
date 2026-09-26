@@ -85,6 +85,15 @@ export interface HeatmapCell {
 export const fetchListeningHeatmap = (days = 28) =>
   http.get<{ windowDays: number; cells: HeatmapCell[] }>(`/admin/audience/heatmap?days=${days}`);
 
+export interface RetentionStats {
+  cohortSize: number;
+  returnedDay1: number;
+  returnedDay7: number;
+  returnedDay30: number;
+}
+
+export const fetchRetentionStats = () => http.get<RetentionStats>('/admin/audience/retention');
+
 export const fetchTopSearches = () =>
   http.get<{ windowDays: number; searches: TopSearch[]; withoutResults: TopSearch[] }>('/admin/audience/searches');
 

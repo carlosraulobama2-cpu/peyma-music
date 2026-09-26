@@ -267,6 +267,68 @@ export async function getListeningHeatmap(days = ROLLING_WINDOW_DAYS): Promise<H
   return rows.map((row) => ({ dayOfWeek: row.dow, hour: row.hour, streams: Number(row.streams) }));
 }
 
+export interface RetentionStats {
+  /** Usuarios cuya primera escucha fue hace 30 días o más — a los que ya les dio tiempo de completar la ventana entera. */
+  cohortSize: number;
+  returnedDay1: number;
+  returnedDay7: number;
+  returnedDay30: number;
+}
+
+/**
+ * Retención por cohorte: de la gente que escuchó por primera vez hace al
+ * menos 30 días, ¿qué parte volvió a escuchar al día siguiente, dentro de la
+ * semana, o dentro del mes?
+ *
+ * Se exige que la primera escucha tenga 30 días o más para que "no volvió
+ * dentro del mes" signifique eso y no "todavía no le dio tiempo" — mezclar
+ * ambos casos infla artificialmente la tasa de abandono.
+ *
+ * "Dentro de la semana" y "dentro del mes" cuentan también a quien volvió al
+ * día siguiente: son ventanas acumuladas (día 1 ⊂ semana ⊂ mes), como en
+ * cualquier tabla de retención por cohorte.
+ */
+export async function getRetentionStats(): Promise<RetentionStats> {
+  const rows = await prisma.$queryRaw<
+    { cohort: bigint; returnedDay1: bigint; returnedDay7: bigint; returnedDay30: bigint }[]
+  >`
+    WITH first_seen AS (
+      SELECT "userId", MIN("playedAt") AS first_at
+        FROM "StreamLog"
+       GROUP BY "userId"
+    ),
+    activity AS (
+      SELECT s."userId",
+             EXTRACT(EPOCH FROM (s."playedAt" - f.first_at)) / 86400 AS days_since_first
+        FROM "StreamLog" s
+        JOIN first_seen f ON f."userId" = s."userId"
+    ),
+    per_user AS (
+      SELECT f."userId",
+             BOOL_OR(a.days_since_first >= 1 AND a.days_since_first < 2)  AS day1,
+             BOOL_OR(a.days_since_first >= 1 AND a.days_since_first < 7)  AS day7,
+             BOOL_OR(a.days_since_first >= 1 AND a.days_since_first < 30) AS day30
+        FROM first_seen f
+        LEFT JOIN activity a ON a."userId" = f."userId"
+       WHERE f.first_at <= NOW() - INTERVAL '30 days'
+       GROUP BY f."userId"
+    )
+    SELECT COUNT(*)                          AS cohort,
+           COUNT(*) FILTER (WHERE day1)      AS "returnedDay1",
+           COUNT(*) FILTER (WHERE day7)      AS "returnedDay7",
+           COUNT(*) FILTER (WHERE day30)     AS "returnedDay30"
+      FROM per_user
+  `;
+
+  const row = rows[0];
+  return {
+    cohortSize: Number(row?.cohort ?? 0),
+    returnedDay1: Number(row?.returnedDay1 ?? 0),
+    returnedDay7: Number(row?.returnedDay7 ?? 0),
+    returnedDay30: Number(row?.returnedDay30 ?? 0),
+  };
+}
+
 export interface TopSearch {
   normalized: string;
   /** El texto tal como lo escribió la última persona que buscó eso. */
