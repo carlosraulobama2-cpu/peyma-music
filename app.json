@@ -61,7 +61,8 @@
           "photosPermission": "Peyma necesita acceso a tus fotos para que puedas elegir tu foto de perfil.",
           "cameraPermission": "Peyma necesita acceso a la cámara para que puedas hacerte una foto de perfil."
         }
-      ]
+      ],
+      "expo-updates"
     ],
     "experiments": {
       "typedRoutes": true
@@ -72,6 +73,12 @@
         "projectId": "69b3887e-4cab-4937-92ad-a0377ba4340b"
       }
     },
-    "owner": "carlosbaxx"
+    "owner": "carlosbaxx",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/69b3887e-4cab-4937-92ad-a0377ba4340b"
+    }
   }
 }

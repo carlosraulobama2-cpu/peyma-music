@@ -12,8 +12,26 @@ import * as SecureStore from 'expo-secure-store';
 const TOKEN_KEY = 'peyma-token';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
-if (!API_URL) {
-  throw new Error('EXPO_PUBLIC_API_URL no está definida. Copia .env.example a .env y reinicia Expo.');
+
+/**
+ * Antes esto era un `throw` a nivel de módulo: si `EXPO_PUBLIC_API_URL` no
+ * llegaba embebida en el bundle (una build de EAS sin esa variable en el
+ * perfil, por ejemplo), `httpClient.ts` explotaba al importarse — es decir,
+ * antes de que React llegara a montar nada. En release eso no muestra
+ * ninguna pantalla de error: la app abre y se cierra sola, sin rastro. Se
+ * pospone el error a cuando de verdad se necesita la URL (dentro de un
+ * `try/catch` real, en una pantalla que ya sabe mostrar "no se pudo
+ * conectar"), igual que ya hace `googleSignIn.ts` con su propia variable.
+ */
+function resolveApiUrl(): string {
+  if (!API_URL) {
+    throw new ApiError(
+      'La app no tiene configurada la URL del servidor (EXPO_PUBLIC_API_URL). Contactá a soporte.',
+      0,
+      'missing_api_url',
+    );
+  }
+  return API_URL;
 }
 
 /**
@@ -114,13 +132,14 @@ async function request<T>(path: string, { method = 'GET', body, signal, skipAuth
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetch(`${resolveApiUrl()}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError('No se pudo conectar con el servidor. Revisa tu conexión.', 0, 'network_error');
   }
@@ -193,8 +212,9 @@ export async function uploadFile<T>(path: string, formData: FormData): Promise<T
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
-  } catch {
+    response = await fetch(`${resolveApiUrl()}${path}`, { method: 'POST', headers, body: formData });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError('No se pudo conectar con el servidor. Revisa tu conexión.', 0, 'network_error');
   }
 
