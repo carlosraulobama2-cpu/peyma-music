@@ -18,7 +18,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Genre } from '../types';
-import { AFFINITY_POINTS, GENRES, type GenreScore, type ArtistScore, type ListeningEvent, type ListeningEventType, type UserMetrics } from '../types/music';
+import { AFFINITY_POINTS, type GenreScore, type ArtistScore, type ListeningEvent, type ListeningEventType, type UserMetrics } from '../types/music';
 
 /** Cuántos eventos crudos se conservan — suficiente historial sin crecer sin límite. */
 const MAX_EVENTS = 300;
@@ -28,10 +28,6 @@ const RECOMPUTE_DEBOUNCE_MS = 30_000;
 const RECENT_WINDOW_DAYS = 7;
 const RECENT_WEIGHT = 3;
 const BASE_WEIGHT = 1;
-
-function emptyGenreScores(): Record<Genre, number> {
-  return Object.fromEntries(GENRES.map((g) => [g, 0])) as Record<Genre, number>;
-}
 
 function ageInDays(iso: string, now: number): number {
   return (now - new Date(iso).getTime()) / 86_400_000;
@@ -44,18 +40,25 @@ function timeDecayWeight(occurredAt: string, now: number): number {
 
 function computeMetrics(events: ListeningEvent[]): UserMetrics {
   const now = Date.now();
-  const genreScores = emptyGenreScores();
+  // Vacío, no precargado con los 8 géneros heredados: el catálogo hoy usa
+  // géneros libres, curados desde Ritmos en el panel (bien puede llegar
+  // "Rap", "Trap" o "Drill", que nunca estuvieron en esa lista vieja). Un
+  // objeto precargado con esas 8 claves fijas dejaba sumando en silencio
+  // una clave nueva para cualquier otro género — nunca se leía de vuelta,
+  // así que esa afinidad jamás llegaba a "Para ti".
+  const genreScores: Record<Genre, number> = {};
   const artistScores: Record<string, number> = {};
   const trackScores: Record<string, number> = {};
 
   for (const event of events) {
     const weighted = event.points * timeDecayWeight(event.occurredAt, now);
-    if (event.genre) genreScores[event.genre] += weighted;
+    if (event.genre) genreScores[event.genre] = (genreScores[event.genre] ?? 0) + weighted;
     artistScores[event.artistId] = (artistScores[event.artistId] ?? 0) + weighted;
     trackScores[event.trackId] = (trackScores[event.trackId] ?? 0) + weighted;
   }
 
-  const topGenres: GenreScore[] = GENRES.map((genre) => ({ genre, score: genreScores[genre] }))
+  const topGenres: GenreScore[] = Object.entries(genreScores)
+    .map(([genre, score]) => ({ genre, score }))
     .filter((g) => g.score > 0)
     .sort((a, b) => b.score - a.score);
 
