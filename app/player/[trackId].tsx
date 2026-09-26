@@ -1,18 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, Dimensions, ScrollView, Alert, type LayoutChangeEvent } from 'react-native';
+import { View, Text, Pressable, Dimensions, ScrollView, Alert, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePlayerStore, useLibraryStore, useSheetStore } from '../../src/store';
 import { useAudioPlayer } from '../../src/hooks';
 import { api, isRadioTrack } from '../../src/services';
 import type { SleepTimerDuration, Track } from '../../src/types';
-import { useTheme, useThemedStyles, spacing, typography, motion, type Theme } from '../../src/theme';
-import { ProgressBar, AppBar, EmptyState } from '../../src/components';
+import { useTheme, useThemedStyles, spacing, typography, motion, radius, type Theme } from '../../src/theme';
+import { ProgressBar, EmptyState } from '../../src/components';
 import { clamp } from '../../src/utils';
+
+/**
+ * Fondo difuminado de la propia carátula, no un color sólido — la misma
+ * idea de Apple Music: nunca hay "el" color de una portada sin analizarla
+ * (eso sí exigiría procesar cada pista en el servidor, ver `dominantColor`
+ * en `HeroRow`, que sólo existe hoy para la fila Destacado), pero una
+ * carátula muy desenfocada YA es ese lavado de color — sin depender de nada
+ * que el backend no calcule para toda pista.
+ */
+const BACKDROP_BLUR = 80;
+
+/**
+ * Blanco fijo, no dependiente de `useTheme()` — la pantalla siempre se ve
+ * sobre una carátula desenfocada oscurecida, en modo claro u oscuro por
+ * igual (mismo criterio que ya usa el hero de Lo-Fi para su propio texto).
+ */
+const ON_BLUR_PRIMARY = '#FFFFFF';
+const ON_BLUR_SECONDARY = 'rgba(255,255,255,0.72)';
+const GLASS_BG = 'rgba(255,255,255,0.14)';
+/** El botón de play es un círculo blanco sólido (no de cristal) — su ícono necesita contraste al revés del resto de la pantalla. */
+const PLAY_ICON_COLOR = '#111111';
 
 const SLEEP_TIMER_OPTIONS: SleepTimerDuration[] = [15, 30, 45, 60];
 
@@ -21,6 +45,7 @@ const COVER_SIZE = Math.min(SCREEN_WIDTH - 64, 360);
 
 export default function PlayerFullScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
 
@@ -114,9 +139,16 @@ export default function PlayerFullScreen() {
   };
 
   if (!currentTrack) {
+    // Sin pista no hay carátula que difuminar — se cae al fondo normal del
+    // tema en vez de forzar el blanco fijo del resto de esta pantalla, que
+    // sólo tiene sentido sobre el lavado de color de una carátula real.
     return (
-      <View style={styles.container}>
-        <AppBar title="Reproduciendo" leftAction={{ icon: 'chevron-down', onPress: () => router.back() }} />
+      <View style={[styles.container, { backgroundColor: colors.surface[0] }]}>
+        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+          <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Cerrar">
+            <Ionicons name="chevron-down" size={22} color={colors.text.primary} />
+          </Pressable>
+        </View>
         <EmptyState
           icon="musical-notes-outline"
           title="No hay canción seleccionada"
@@ -171,20 +203,42 @@ export default function PlayerFullScreen() {
 
   return (
     <View style={styles.container}>
-      <AppBar
-        title="Reproduciendo"
-        leftAction={{ icon: 'chevron-down', onPress: () => router.back(), accessibilityLabel: 'Cerrar' }}
-        rightActions={[
-          { icon: 'ellipsis-horizontal', onPress: () => openTrackOptions(currentTrack), accessibilityLabel: 'Más opciones' },
-        ]}
-      />
+      {/* Lavado de color: la propia carátula, muy desenfocada, detrás de
+          todo — nunca un color sólido fijo. Ver nota de `BACKDROP_BLUR`. */}
+      <View style={StyleSheet.absoluteFill}>
+        <Image
+          source={currentTrack.coverUrl}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          blurRadius={BACKDROP_BLUR}
+        />
+        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.55)']}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Cerrar">
+          <Ionicons name="chevron-down" size={22} color={ON_BLUR_PRIMARY} />
+        </Pressable>
+        <Pressable
+          onPress={() => openTrackOptions(currentTrack)}
+          style={styles.headerButton}
+          accessibilityRole="button"
+          accessibilityLabel="Más opciones"
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color={ON_BLUR_PRIMARY} />
+        </Pressable>
+      </View>
 
       {playbackError && (
         <View style={styles.errorBanner}>
           <Ionicons name="cloud-offline-outline" size={18} color={colors.semantic.error} />
           <Text style={styles.errorBannerText}>{playbackError}</Text>
           <Pressable onPress={dismissPlaybackError} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar aviso">
-            <Ionicons name="close" size={18} color={colors.text.secondary} />
+            <Ionicons name="close" size={18} color={ON_BLUR_SECONDARY} />
           </Pressable>
         </View>
       )}
@@ -236,7 +290,7 @@ export default function PlayerFullScreen() {
                 <Ionicons
                   name={isLiked ? 'heart' : 'heart-outline'}
                   size={28}
-                  color={isLiked ? colors.brand[500] : colors.text.primary}
+                  color={isLiked ? colors.brand[500] : ON_BLUR_PRIMARY}
                 />
               </Animated.View>
             </Pressable>
@@ -265,7 +319,7 @@ export default function PlayerFullScreen() {
             accessibilityLabel="Aleatorio"
             accessibilityState={{ selected: isShuffled }}
           >
-            <Ionicons name="shuffle" size={26} color={isShuffled ? colors.brand[500] : colors.text.secondary} />
+            <Ionicons name="shuffle" size={26} color={isShuffled ? colors.brand[500] : ON_BLUR_SECONDARY} />
           </Pressable>
 
           <Pressable
@@ -277,7 +331,7 @@ export default function PlayerFullScreen() {
             accessibilityRole="button"
             accessibilityLabel="Anterior"
           >
-            <Ionicons name="play-skip-back" size={36} color={colors.text.primary} />
+            <Ionicons name="play-skip-back" size={36} color={ON_BLUR_PRIMARY} />
           </Pressable>
 
           <Pressable
@@ -288,12 +342,12 @@ export default function PlayerFullScreen() {
             accessibilityLabel={isBuffering ? 'Cargando' : isPlaying ? 'Pausar' : 'Reproducir'}
           >
             {isBuffering ? (
-              <Ionicons name="ellipsis-horizontal" size={32} color={colors.surface[0]} />
+              <Ionicons name="ellipsis-horizontal" size={32} color={PLAY_ICON_COLOR} />
             ) : (
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
                 size={36}
-                color={colors.surface[0]}
+                color={PLAY_ICON_COLOR}
                 style={isPlaying ? undefined : styles.playIconOffset}
               />
             )}
@@ -308,7 +362,7 @@ export default function PlayerFullScreen() {
             accessibilityRole="button"
             accessibilityLabel="Siguiente"
           >
-            <Ionicons name="play-skip-forward" size={36} color={colors.text.primary} />
+            <Ionicons name="play-skip-forward" size={36} color={ON_BLUR_PRIMARY} />
           </Pressable>
 
           <Pressable
@@ -325,7 +379,7 @@ export default function PlayerFullScreen() {
             <Ionicons
               name={repeatMode === 'off' ? 'repeat-outline' : 'repeat'}
               size={26}
-              color={repeatMode !== 'off' ? colors.brand[500] : colors.text.secondary}
+              color={repeatMode !== 'off' ? colors.brand[500] : ON_BLUR_SECONDARY}
             />
             {repeatMode === 'track' && (
               <View style={styles.repeatBadge}>
@@ -348,7 +402,7 @@ export default function PlayerFullScreen() {
             <Ionicons
               name={isCrossfadeEnabled ? 'musical-note' : 'musical-note-outline'}
               size={18}
-              color={isCrossfadeEnabled ? colors.brand[500] : colors.text.secondary}
+              color={isCrossfadeEnabled ? colors.brand[500] : ON_BLUR_SECONDARY}
             />
             <Text style={[styles.crossfadeLabel, isCrossfadeEnabled && { color: colors.brand[500] }]}>
               Crossfade {isCrossfadeEnabled ? 'activado' : 'desactivado'}
@@ -356,13 +410,13 @@ export default function PlayerFullScreen() {
           </Pressable>
 
           <View style={styles.volumeRow}>
-            <Ionicons name="volume-low-outline" size={18} color={colors.text.secondary} />
+            <Ionicons name="volume-low-outline" size={18} color={ON_BLUR_SECONDARY} />
             <GestureDetector gesture={volumePan}>
               <View onLayout={handleVolumeLayout} style={styles.volumeTrack} hitSlop={{ top: 10, bottom: 10 }}>
                 <View style={[styles.volumeFill, { width: `${volume * 100}%` }]} />
               </View>
             </GestureDetector>
-            <Ionicons name="volume-high-outline" size={18} color={colors.text.secondary} />
+            <Ionicons name="volume-high-outline" size={18} color={ON_BLUR_SECONDARY} />
           </View>
 
           <View style={styles.bottomRowSplit}>
@@ -372,7 +426,7 @@ export default function PlayerFullScreen() {
               accessibilityRole="button"
               accessibilityLabel="Temporizador de apagado"
             >
-              <Ionicons name="moon-outline" size={18} color={sleepTimer.isActive ? colors.brand[500] : colors.text.secondary} />
+              <Ionicons name="moon-outline" size={18} color={sleepTimer.isActive ? colors.brand[500] : ON_BLUR_SECONDARY} />
               <Text style={[styles.queueLabel, sleepTimer.isActive ? { color: colors.brand[500] } : null]}>
                 {sleepTimer.isActive ? `${sleepTimer.minutesRemaining} min` : 'Apagar en…'}
               </Text>
@@ -384,7 +438,7 @@ export default function PlayerFullScreen() {
               accessibilityRole="button"
               accessibilityLabel="Ver cola de reproducción"
             >
-              <Ionicons name="list-outline" size={18} color={colors.text.secondary} />
+              <Ionicons name="list-outline" size={18} color={ON_BLUR_SECONDARY} />
               <Text style={styles.queueLabel}>Ver cola</Text>
             </Pressable>
           </View>
@@ -397,7 +451,23 @@ export default function PlayerFullScreen() {
 const makeStyles = ({ colors }: Theme) => ({
   container: {
     flex: 1,
-    backgroundColor: colors.surface[0],
+    overflow: 'hidden' as const,
+    // Sólo se ve si no hay pista (estado vacío, sin carátula que difuminar).
+    backgroundColor: '#1a1a1a',
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  headerButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: GLASS_BG,
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -412,11 +482,11 @@ const makeStyles = ({ colors }: Theme) => ({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 10,
-    backgroundColor: colors.surface[200],
+    backgroundColor: GLASS_BG,
   },
   errorBannerText: {
     flex: 1,
-    color: colors.text.primary,
+    color: ON_BLUR_PRIMARY,
     fontFamily: typography.family.medium,
     fontSize: typography.size.xs,
   },
@@ -429,8 +499,13 @@ const makeStyles = ({ colors }: Theme) => ({
   coverImage: {
     width: COVER_SIZE,
     height: COVER_SIZE,
-    borderRadius: 16,
-    backgroundColor: colors.surface[300],
+    borderRadius: radius.xl,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 12,
   },
   infoContainer: {
     flexDirection: 'row' as const,
@@ -449,26 +524,26 @@ const makeStyles = ({ colors }: Theme) => ({
     gap: spacing.xs,
   },
   title: {
-    color: colors.text.primary,
+    color: ON_BLUR_PRIMARY,
     fontFamily: typography.family.bold,
     fontSize: typography.size.xl,
     marginBottom: spacing.xs,
     flexShrink: 1,
   },
   explicitBadge: {
-    backgroundColor: colors.surface[300],
+    backgroundColor: GLASS_BG,
     borderRadius: 3,
     paddingHorizontal: 4,
     paddingVertical: 1,
     marginBottom: spacing.xs,
   },
   explicitBadgeText: {
-    color: colors.text.primary,
+    color: ON_BLUR_PRIMARY,
     fontFamily: typography.family.bold,
     fontSize: 10,
   },
   artist: {
-    color: colors.text.secondary,
+    color: ON_BLUR_SECONDARY,
     fontFamily: typography.family.regular,
     fontSize: typography.size.base,
   },
@@ -489,7 +564,7 @@ const makeStyles = ({ colors }: Theme) => ({
   },
   liveLabel: {
     flexShrink: 1,
-    color: colors.text.secondary,
+    color: ON_BLUR_SECONDARY,
     fontFamily: typography.family.bold,
     fontSize: typography.size.xs,
     letterSpacing: 1.5,
@@ -525,7 +600,7 @@ const makeStyles = ({ colors }: Theme) => ({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: colors.text.primary,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
@@ -541,7 +616,7 @@ const makeStyles = ({ colors }: Theme) => ({
     gap: spacing.sm,
   },
   crossfadeLabel: {
-    color: colors.text.secondary,
+    color: ON_BLUR_SECONDARY,
     fontFamily: typography.family.regular,
     fontSize: typography.size.sm,
   },
@@ -557,7 +632,7 @@ const makeStyles = ({ colors }: Theme) => ({
   },
   volumeFill: {
     height: 4,
-    backgroundColor: colors.text.primary,
+    backgroundColor: ON_BLUR_PRIMARY,
     borderRadius: 2,
   },
   bottomRowSplit: {
@@ -576,7 +651,7 @@ const makeStyles = ({ colors }: Theme) => ({
     gap: spacing.sm,
   },
   queueLabel: {
-    color: colors.text.secondary,
+    color: ON_BLUR_SECONDARY,
     fontFamily: typography.family.regular,
     fontSize: typography.size.sm,
   },

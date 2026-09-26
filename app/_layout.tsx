@@ -124,7 +124,17 @@ function RootNavigator() {
         <Stack.Screen name="lofi/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen
           name="player/[trackId]"
-          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          options={{
+            // Hoja corta, no pantalla completa: dejar ver detrás (Apple
+            // Music, no una modal opaca de borde a borde). Nativo en ambas
+            // plataformas — iOS usa su UISheetPresentationController,
+            // Android el Material BottomSheetBehaviour de react-native-screens.
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.92],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 24,
+            sheetExpandsWhenScrolledToEdge: false,
+          }}
         />
       </Stack>
       <ToastHost />
