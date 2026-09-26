@@ -10,6 +10,7 @@ import { ArtistDetailPage } from './pages/ArtistDetailPage';
 import { UploadPage } from './pages/UploadPage';
 import { JobsPage } from './pages/JobsPage';
 import { EditorialPage } from './pages/EditorialPage';
+import { PromotionsPage } from './pages/PromotionsPage';
 import { UsersPage } from './pages/UsersPage';
 import { TrendingPage } from './pages/TrendingPage';
 import { AudiencePage } from './pages/AudiencePage';
@@ -42,6 +43,7 @@ const PROTECTED_ROUTES = [
   { path: '/trending', element: <TrendingPage /> },
   { path: '/audience', element: <AudiencePage /> },
   { path: '/editorial', element: <EditorialPage /> },
+  { path: '/promotions', element: <PromotionsPage /> },
   { path: '/playlists', element: <PlaylistsPage /> },
   { path: '/playlists/:id', element: <PlaylistDetailPage /> },
   { path: '/genres', element: <GenresPage /> },

@@ -17,6 +17,7 @@ import {
   ScrollText,
   Download,
   Disc3,
+  Flame,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -58,6 +59,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { to: '/verification', label: 'Verificación', icon: BadgeCheck, description: 'Candidatos al check azul, por actividad real', group: 'Moderación', accentColor: '#3D91F4' },
   { to: '/artists', label: 'Artistas', icon: Users, description: 'Bloquear o eliminar artistas', group: 'Catálogo', accentColor: '#1DB954' },
   { to: '/editorial', label: 'Secciones', icon: LayoutList, description: 'Lo nuevo, Mola, Los mejores álbumes', group: 'Catálogo', accentColor: '#4AD9E8' },
+  { to: '/promotions', label: 'Primera fila', icon: Flame, description: 'Campañas pagadas por artistas para destacar una canción', group: 'Catálogo', accentColor: '#FF6B6B' },
   { to: '/playlists', label: 'Playlists', icon: ListMusic, description: 'Listas de los usuarios', group: 'Catálogo', accentColor: '#FF8FB1' },
   { to: '/genres', label: 'Ritmos', icon: Music4, description: 'Drill, Trap, Amapiano…', group: 'Catálogo', accentColor: '#FFC94D' },
   { to: '/upload', label: 'Subir canción', icon: UploadCloud, description: 'Ingesta de audio y metadatos', group: 'Catálogo', accentColor: '#1AE86A' },
