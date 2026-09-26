@@ -13,7 +13,7 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://catherine-describe-walnut-genres.trycloudflare.com/api"
+        "EXPO_PUBLIC_API_URL": "https://peyma-api.onrender.com/api"
       }
     },
     "production": {
