@@ -72,6 +72,33 @@ export function fetchVerificationCandidates(limit = 30): Promise<{ candidates: V
   return http.get(`/admin/artists/verification-candidates?limit=${limit}`);
 }
 
+export interface ArtistGrowth {
+  artistId: string;
+  name: string;
+  imageUrl: string;
+  isVerified: boolean;
+  currentListeners: number;
+  previousListeners: number;
+  growthPct: number | null;
+}
+
+/** Crecimiento período a período (oyentes distintos), comparando `days` contra los `days` anteriores. */
+export const fetchArtistGrowth = (days = 7, limit = 25) =>
+  http.get<{ days: number; artists: ArtistGrowth[] }>(`/admin/artists/growth?days=${days}&limit=${limit}`);
+
+export interface InactiveArtist {
+  artistId: string;
+  name: string;
+  imageUrl: string;
+  isVerified: boolean;
+  trackCount: number;
+  lastUploadAt: string;
+}
+
+/** Artistas con catálogo pero sin publicar nada en `months` meses. */
+export const fetchInactiveArtists = (months = 3, limit = 50) =>
+  http.get<{ months: number; artists: InactiveArtist[] }>(`/admin/artists/inactive?months=${months}&limit=${limit}`);
+
 /** Una canción tal como la ve el panel: incluye las pendientes y bloqueadas. */
 export interface AdminArtistTrack {
   id: string;

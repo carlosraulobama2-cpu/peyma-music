@@ -43,7 +43,7 @@ import { pipeAudio } from './stream';
 import { record } from '../services/auditLog';
 import { invalidateTrackAccess, invalidateAllTrackAccess } from '../services/trackAccess';
 import { notify, notifyTrackOwner } from '../services/notifications';
-import { getSectionForPreview } from '../services/editorial';
+import { getSectionForPreview, MIN_LISTENERS_TO_FEATURE } from '../services/editorial';
 import {
   getTopListeners,
   getTopArtistsByTime,
@@ -55,7 +55,7 @@ import {
   getPlayCounts,
 } from '../services/audienceStats';
 import { getArtistStats } from '../services/artistStats';
-import { getRankedArtists } from '../services/artistRanking';
+import { getRankedArtists, getArtistGrowth, getInactiveArtists } from '../services/artistRanking';
 import { inspectUrl } from '../services/trackImport';
 import { listSettings, setSetting, isKnownSetting, validateSettingValue, getNumber } from '../services/settings';
 import { slugify } from '../utils/slug';
@@ -766,6 +766,22 @@ router.get('/artists/verification-candidates', async (req: AuthRequest, res: Res
     .slice(0, limit);
 
   res.json({ candidates });
+});
+
+/** Quién crece y quién cae, comparando el período actual contra el anterior de igual tamaño. */
+router.get('/artists/growth', async (req: AuthRequest, res: Response) => {
+  const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 90) : 7;
+  const { limit } = querySchema.parse(req.query);
+  const artists = await getArtistGrowth(days, limit, MIN_LISTENERS_TO_FEATURE);
+  res.json({ days, artists });
+});
+
+/** Artistas con catálogo pero sin publicar nada en meses — candidatos a un empujón editorial o un mensaje de reactivación. */
+router.get('/artists/inactive', async (req: AuthRequest, res: Response) => {
+  const months = Number(req.query.months) > 0 ? Math.min(Number(req.query.months), 24) : 3;
+  const { limit } = querySchema.parse(req.query);
+  const artists = await getInactiveArtists(months, limit);
+  res.json({ months, artists });
 });
 
 router.patch('/artists/:id/verify', async (req: AuthRequest, res: Response) => {
