@@ -76,6 +76,15 @@ export const fetchTopListeners = (order: 'desc' | 'asc' = 'desc') =>
 export const fetchTopArtists = () =>
   http.get<{ windowDays: number; artists: TopArtistByTime[] }>('/admin/audience/artists');
 
+export interface HeatmapCell {
+  dayOfWeek: number;
+  hour: number;
+  streams: number;
+}
+
+export const fetchListeningHeatmap = (days = 28) =>
+  http.get<{ windowDays: number; cells: HeatmapCell[] }>(`/admin/audience/heatmap?days=${days}`);
+
 export const fetchTopSearches = () =>
   http.get<{ windowDays: number; searches: TopSearch[]; withoutResults: TopSearch[] }>('/admin/audience/searches');
 

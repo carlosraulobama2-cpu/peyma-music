@@ -49,6 +49,7 @@ import {
   getTopArtistsByTime,
   getTrendingTracks,
   getTopSearches,
+  getListeningHeatmap,
   ROLLING_WINDOW_DAYS as AUDIENCE_WINDOW_DAYS,
   getPlayCounts,
 } from '../services/audienceStats';
@@ -1423,6 +1424,13 @@ router.get('/audience/live-map', async (req: AuthRequest, res: Response) => {
     // que pasa es que sólo tres dieron permiso.
     consent: { granted: withConsent, totalUsers: total },
   });
+});
+
+/** Mapa de calor: en qué día y hora (UTC) se concentran las reproducciones. */
+router.get('/audience/heatmap', async (req: AuthRequest, res: Response) => {
+  const days = Number(req.query.days) > 0 ? Math.min(Number(req.query.days), 90) : AUDIENCE_WINDOW_DAYS;
+  const cells = await getListeningHeatmap(days);
+  res.json({ windowDays: days, cells });
 });
 
 /** Qué busca la gente, y qué busca sin encontrar nada. */

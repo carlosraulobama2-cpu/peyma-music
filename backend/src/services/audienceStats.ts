@@ -242,6 +242,31 @@ export async function getTrendingTracks(limit = 20, days = 7, minListeners = 0):
   }));
 }
 
+export interface HeatmapCell {
+  /** 0 = domingo … 6 = sábado, igual que `EXTRACT(DOW ...)` de Postgres. */
+  dayOfWeek: number;
+  /** 0–23. En UTC, no en la hora local de cada oyente: con usuarios en
+   *  husos distintos no existe "la" hora local del conjunto, y mostrar la
+   *  del servidor sin avisar confundiría más que ayudaría. El panel debe
+   *  decir "UTC" junto al mapa. */
+  hour: number;
+  streams: number;
+}
+
+/** Cuándo se escucha más, por día de la semana y hora — para detectar picos y huecos de actividad. */
+export async function getListeningHeatmap(days = ROLLING_WINDOW_DAYS): Promise<HeatmapCell[]> {
+  const rows = await prisma.$queryRaw<{ dow: number; hour: number; streams: bigint }[]>`
+    SELECT EXTRACT(DOW FROM "playedAt")::int  AS dow,
+           EXTRACT(HOUR FROM "playedAt")::int AS hour,
+           COUNT(*)                           AS streams
+      FROM "StreamLog"
+     WHERE "playedAt" >= ${windowStart(days)}
+     GROUP BY dow, hour
+  `;
+
+  return rows.map((row) => ({ dayOfWeek: row.dow, hour: row.hour, streams: Number(row.streams) }));
+}
+
 export interface TopSearch {
   normalized: string;
   /** El texto tal como lo escribió la última persona que buscó eso. */

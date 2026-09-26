@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download } from 'lucide-react';
+import { BadgeCheck, Clock, Search as SearchIcon, UserX, TrendingUp, Download, CalendarClock } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { CoverImage } from '../components/CoverImage';
 import {
@@ -7,6 +7,7 @@ import {
   fetchTopArtists,
   fetchTopSearches,
   fetchSignupFailures,
+  fetchListeningHeatmap,
   formatHours,
   SIGNUP_STAGE_LABELS,
   type TopListener,
@@ -14,6 +15,7 @@ import {
   type TopSearch,
   type SignupAttempt,
   type SignupStage,
+  type HeatmapCell,
 } from '../lib/audience';
 import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
 
@@ -28,14 +30,18 @@ import { toCsv, downloadCsv, datedFilename } from '../lib/csv';
  * las dos cosas como si fueran medición.
  */
 
-type Tab = 'oyentes' | 'artistas' | 'busquedas' | 'altas';
+type Tab = 'oyentes' | 'artistas' | 'horarios' | 'busquedas' | 'altas';
 
 const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'oyentes', label: 'Oyentes', icon: Clock },
   { id: 'artistas', label: 'Artistas por tiempo', icon: TrendingUp },
+  { id: 'horarios', label: 'Horarios', icon: CalendarClock },
   { id: 'busquedas', label: 'Qué se busca', icon: SearchIcon },
   { id: 'altas', label: 'Altas fallidas', icon: UserX },
 ];
+
+/** Domingo a sábado, en el mismo orden que `EXTRACT(DOW ...)` de Postgres (0 = domingo). */
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 /**
  * Aviso de cuánto del dato es estimación. Se calla si todo está medido.
@@ -60,6 +66,7 @@ export function AudiencePage() {
   const [order, setOrder] = useState<'desc' | 'asc'>('desc');
   const [listeners, setListeners] = useState<TopListener[] | null>(null);
   const [artists, setArtists] = useState<TopArtistByTime[] | null>(null);
+  const [heatmap, setHeatmap] = useState<HeatmapCell[] | null>(null);
   const [searches, setSearches] = useState<{ all: TopSearch[]; empty: TopSearch[] } | null>(null);
   const [signups, setSignups] = useState<{ byStage: Partial<Record<SignupStage, number>>; attempts: SignupAttempt[] } | null>(
     null,
@@ -79,6 +86,10 @@ export function AudiencePage() {
     } else if (tab === 'artistas') {
       fetchTopArtists()
         .then((r) => !cancelled && setArtists(r.artists))
+        .catch(fail);
+    } else if (tab === 'horarios') {
+      fetchListeningHeatmap()
+        .then((r) => !cancelled && setHeatmap(r.cells))
         .catch(fail);
     } else if (tab === 'busquedas') {
       fetchTopSearches()
@@ -265,6 +276,8 @@ export function AudiencePage() {
           </ul>
         ))}
 
+      {tab === 'horarios' && (!heatmap ? <SkeletonList /> : <ListeningHeatmap cells={heatmap} />)}
+
       {tab === 'busquedas' &&
         (!searches ? (
           <SkeletonList />
@@ -355,6 +368,58 @@ export function AudiencePage() {
           </>
         ))}
     </AdminShell>
+  );
+}
+
+/**
+ * Grilla de 7×24: un color más intenso por celda cuanto más se escucha en
+ * ese día y esa hora. En UTC — con oyentes en husos distintos no existe
+ * "la" hora local de todos, así que se dice el huso en vez de fingir uno.
+ */
+function ListeningHeatmap({ cells }: { cells: HeatmapCell[] }) {
+  if (cells.length === 0) return <Empty>Nadie escuchó nada en la ventana.</Empty>;
+
+  const byKey = new Map(cells.map((cell) => [`${cell.dayOfWeek}-${cell.hour}`, cell.streams]));
+  const max = Math.max(...cells.map((cell) => cell.streams), 1);
+  const peak = cells.reduce((best, cell) => (cell.streams > best.streams ? cell : best), cells[0]!);
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-muted">
+        Pico de actividad: <span className="font-semibold text-foreground">{DAY_LABELS[peak.dayOfWeek]}</span> a las{' '}
+        <span className="font-semibold text-foreground">{String(peak.hour).padStart(2, '0')}:00 UTC</span>, con{' '}
+        {peak.streams} reproducciones.
+      </p>
+
+      <div className="scrollbar-thin overflow-x-auto rounded-xl border border-white/10 bg-surface p-4">
+        <div className="inline-grid gap-1" style={{ gridTemplateColumns: `2.5rem repeat(24, minmax(1.5rem, 1fr))` }}>
+          <div />
+          {[...Array(24)].map((_, hour) => (
+            <div key={hour} className="text-center font-mono text-[10px] text-muted">
+              {hour % 3 === 0 ? hour : ''}
+            </div>
+          ))}
+
+          {DAY_LABELS.map((label, dayOfWeek) => (
+            <div key={label} className="contents">
+              <div className="flex items-center text-xs font-semibold text-muted">{label}</div>
+              {[...Array(24)].map((_, hour) => {
+                const streams = byKey.get(`${dayOfWeek}-${hour}`) ?? 0;
+                const intensity = streams / max;
+                return (
+                  <div
+                    key={hour}
+                    title={`${label} ${String(hour).padStart(2, '0')}:00 UTC — ${streams} reproducciones`}
+                    className="aspect-square rounded-sm"
+                    style={{ backgroundColor: intensity === 0 ? 'rgba(255,255,255,0.05)' : `rgba(29,185,84,${0.15 + intensity * 0.85})` }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
