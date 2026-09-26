@@ -8,7 +8,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { usePlayerStore, useLibraryStore, useSheetStore } from '../../src/store';
 import { useAudioPlayer } from '../../src/hooks';
-import { api } from '../../src/services';
+import { api, isRadioTrack } from '../../src/services';
 import type { SleepTimerDuration, Track } from '../../src/types';
 import { useTheme, useThemedStyles, spacing, typography, motion, type Theme } from '../../src/theme';
 import { ProgressBar, AppBar, EmptyState } from '../../src/components';
@@ -66,7 +66,9 @@ export default function PlayerFullScreen() {
    */
   const [trackCredits, setTrackCredits] = useState<Track | null>(null);
   useEffect(() => {
-    if (!currentTrack) return;
+    // Una estación de radio no tiene ficha en `GET /tracks/:id` — no es una
+    // pista del catálogo, es una URL de un tercero.
+    if (!currentTrack || isRadioTrack(currentTrack)) return;
     let cancelled = false;
     api.getTrackById(currentTrack.id).then((track) => {
       if (!cancelled && track) setTrackCredits(track);
@@ -208,29 +210,46 @@ export default function PlayerFullScreen() {
                 </View>
               )}
             </View>
-            <Pressable onPress={handleShowCredits} accessibilityRole="button" accessibilityLabel="Ver créditos">
+            {isRadioTrack(currentTrack) ? (
               <Text style={styles.artist} numberOfLines={1}>
                 {currentTrack.artist}
               </Text>
-            </Pressable>
+            ) : (
+              <Pressable onPress={handleShowCredits} accessibilityRole="button" accessibilityLabel="Ver créditos">
+                <Text style={styles.artist} numberOfLines={1}>
+                  {currentTrack.artist}
+                </Text>
+              </Pressable>
+            )}
           </View>
-          <Pressable
-            onPress={handleLike}
-            hitSlop={20}
-            accessibilityRole="button"
-            accessibilityLabel={isLiked ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-          >
-            <Animated.View style={heartStyle}>
-              <Ionicons
-                name={isLiked ? 'heart' : 'heart-outline'}
-                size={28}
-                color={isLiked ? colors.brand[500] : colors.text.primary}
-              />
-            </Animated.View>
-          </Pressable>
+          {/* Favoritos es un concepto del catálogo propio — una estación de
+              radio de un tercero no tiene una fila que "guardar". */}
+          {!isRadioTrack(currentTrack) && (
+            <Pressable
+              onPress={handleLike}
+              hitSlop={20}
+              accessibilityRole="button"
+              accessibilityLabel={isLiked ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+            >
+              <Animated.View style={heartStyle}>
+                <Ionicons
+                  name={isLiked ? 'heart' : 'heart-outline'}
+                  size={28}
+                  color={isLiked ? colors.brand[500] : colors.text.primary}
+                />
+              </Animated.View>
+            </Pressable>
+          )}
         </View>
 
-        <ProgressBar progress={progress} duration={duration || currentTrack.duration} onSeek={seekTo} />
+        {isRadioTrack(currentTrack) ? (
+          <View style={styles.liveRow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveLabel}>TRANSMISIÓN EN VIVO</Text>
+          </View>
+        ) : (
+          <ProgressBar progress={progress} duration={duration || currentTrack.duration} onSeek={seekTo} />
+        )}
 
         <View style={styles.controlsContainer}>
           <Pressable
@@ -449,6 +468,25 @@ const makeStyles = ({ colors }: Theme) => ({
     color: colors.text.secondary,
     fontFamily: typography.family.regular,
     fontSize: typography.size.base,
+  },
+  liveRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: spacing.sm,
+    marginVertical: spacing.lg,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF5A5A',
+  },
+  liveLabel: {
+    color: colors.text.secondary,
+    fontFamily: typography.family.bold,
+    fontSize: typography.size.xs,
+    letterSpacing: 1.5,
   },
   repeatButton: {
     position: 'relative' as const,

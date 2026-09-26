@@ -15,6 +15,7 @@ import type { Track, RepeatMode, PlayerState } from '../types';
 import { useLibraryStore } from './libraryStore';
 import { shuffle } from '../utils';
 import { startStream, updateStreamPosition, finishStream } from '../services/streamTracker';
+import { isRadioTrack } from '../services/radioApi';
 
 const REPEAT_TO_NATIVE: Record<RepeatMode, NativeRepeatMode> = {
   off: NativeRepeatMode.Off,
@@ -49,6 +50,11 @@ let sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
  * normal no hace falta y no se manda.
  */
 function resolveStreamUrl(track: Track, previewToken?: string): string {
+  // Una estación de radio no es una pista del catálogo: no tiene fila en
+  // `Track` que moderar ni proxy que atravesar, así que suena directo desde
+  // la URL que dio Radio Browser.
+  if (isRadioTrack(track)) return track.audioUrl;
+
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) return track.audioUrl;
   const url = `${apiUrl}/tracks/${track.id}/stream`;
@@ -64,6 +70,7 @@ export function toTrackPlayerTrack(track: Track, previewToken?: string): AddTrac
     album: track.album,
     artwork: track.coverUrl,
     duration: track.duration,
+    ...(isRadioTrack(track) ? { isLiveStream: true } : {}),
   };
 }
 
@@ -159,10 +166,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       await TrackPlayer.skip(index);
       await TrackPlayer.play();
 
-      // La vista previa de una subida propia todavía no aprobada no cuenta
-      // como escucha real: ni entra al historial ni alimenta tendencias, el
-      // backend además la rechazaría (`/streams/log` exige APPROVED).
-      if (!previewToken) {
+      // Una radio no es una pista del catálogo: no tiene id real en `Track`,
+      // así que ni entra al historial ("recientes" es para lo que sí se
+      // puede volver a abrir en su ficha) ni se registra como reproducción
+      // — el backend la rechazaría (`/streams/log` espera un trackId real).
+      // Sí hay que cerrar la escucha anterior si venía de una canción real:
+      // `startStream` lo hace solo, pero acá no se llama.
+      if (isRadioTrack(track)) {
+        await finishStream();
+      } else if (!previewToken) {
         useLibraryStore.getState().addToRecentlyPlayed(track);
         // Alimenta oyentes mensuales, tendencias y las horas escuchadas del
         // panel. Hasta ahora la app no registraba nada y todo el uso móvil
