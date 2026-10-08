@@ -46,7 +46,19 @@ export function QuickAccessGrid({ quickAccess }: QuickAccessGridProps) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
 
-  const resumePoints = useLibraryStore((s) => s.getRecentResumePoints(3));
+  /**
+   * `getRecentResumePoints` arma un array nuevo cada vez que se llama (sort +
+   * slice): usarlo directo como selector de Zustand le da a React una
+   * referencia distinta en cada render aunque no haya cambiado nada, y con
+   * `useSyncExternalStore` (React 18) eso es un loop infinito de renders, no
+   * sólo un re-render de más. Se selecciona el record crudo y se deriva acá
+   * con `useMemo`, que sí cachea por referencia de `resumePointsRecord`.
+   */
+  const resumePointsRecord = useLibraryStore((s) => s.resumePoints);
+  const resumePoints = useMemo(
+    () => useLibraryStore.getState().getRecentResumePoints(3),
+    [resumePointsRecord],
+  );
   const recentlyPlayed = useLibraryStore((s) => s.recentlyPlayed);
   const playlists = useLibraryStore((s) => s.playlists);
   const play = usePlayerStore((s) => s.play);
