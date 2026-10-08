@@ -331,8 +331,8 @@ export default function OnboardingScreen() {
 
               <View style={styles.legalLinks}>
                 {[
-                  { slug: 'terms', title: 'Términos de servicio', summary: 'Qué podés hacer, qué no, y qué pasa con la música que subís.' },
-                  { slug: 'privacy', title: 'Política de privacidad', summary: 'Qué datos guardamos, para qué y cómo los borrás.' },
+                  { slug: 'terminos', title: 'Términos de servicio', summary: 'Qué podés hacer, qué no, y qué pasa con la música que subís.' },
+                  { slug: 'privacidad', title: 'Política de privacidad', summary: 'Qué datos guardamos, para qué y cómo los borrás.' },
                 ].map((doc) => (
                   <Pressable
                     key={doc.slug}

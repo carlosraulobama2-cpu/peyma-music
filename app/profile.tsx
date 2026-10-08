@@ -154,8 +154,8 @@ export default function ProfileSettingsScreen() {
     {
       title: 'Legal',
       items: [
-        { kind: 'nav', icon: 'document-text', label: 'Términos de servicio', navigable: true, onPress: () => router.push('/legal/terms') },
-        { kind: 'nav', icon: 'lock-closed', label: 'Privacidad', navigable: true, onPress: () => router.push('/legal/privacy') },
+        { kind: 'nav', icon: 'document-text', label: 'Términos de servicio', navigable: true, onPress: () => router.push('/legal/terminos') },
+        { kind: 'nav', icon: 'lock-closed', label: 'Privacidad', navigable: true, onPress: () => router.push('/legal/privacidad') },
         { kind: 'nav', icon: 'information-circle', label: 'Acerca de', value: '1.0.0', navigable: true, onPress: () => router.push('/legal/about') },
       ],
     },
@@ -191,24 +191,64 @@ export default function ProfileSettingsScreen() {
         {sections.map((section) => (
           <View key={section.title} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.items.map((item) => (
-              <View key={item.label} style={styles.settingItem}>
+            {section.items.map((item) => {
+              const icon = (
                 <Ionicons name={item.icon} size={22} color={colors.text.secondary} style={styles.settingIcon} />
-                <Text style={styles.settingLabel}>{item.label}</Text>
-                {item.kind === 'custom' ? (
-                  item.render()
-                ) : (
-                  <Pressable onPress={item.onPress} accessibilityRole="button" style={styles.settingValueRow}>
-                    {item.value && (
-                      <Text style={styles.settingValue} numberOfLines={1}>
-                        {item.value}
-                      </Text>
-                    )}
-                    {item.navigable && <Ionicons name="chevron-forward" size={18} color={colors.text.secondary} />}
+              );
+              const label = <Text style={styles.settingLabel}>{item.label}</Text>;
+
+              if (item.kind === 'custom') {
+                return (
+                  <View key={item.label} style={styles.settingItem}>
+                    {icon}
+                    {label}
+                    {item.render()}
+                  </View>
+                );
+              }
+
+              const valueAndChevron = (
+                <>
+                  {item.value && (
+                    <Text style={styles.settingValue} numberOfLines={1}>
+                      {item.value}
+                    </Text>
+                  )}
+                  {item.navigable && <Ionicons name="chevron-forward" size={18} color={colors.text.secondary} />}
+                </>
+              );
+
+              /**
+               * Antes el Pressable envolvía sólo el valor + chevron: en filas
+               * sin valor (Privacidad, Términos de servicio) eso dejaba un
+               * blanco de toque de apenas el ícono de la flecha, en el borde
+               * derecho — tocar el nombre de la fila, lo más natural, no
+               * hacía nada. Las filas "navigable" son justo las que navegan
+               * a otra pantalla, así que ahí el renglón entero pasa a ser el
+               * área táctil; el resto (ciclar calidad de audio, alternar
+               * descargas sólo WiFi) sigue con el Pressable acotado al valor,
+               * como antes.
+               */
+              if (item.navigable) {
+                return (
+                  <Pressable key={item.label} onPress={item.onPress} accessibilityRole="button" style={styles.settingItem}>
+                    {icon}
+                    {label}
+                    <View style={styles.settingValueRow}>{valueAndChevron}</View>
                   </Pressable>
-                )}
-              </View>
-            ))}
+                );
+              }
+
+              return (
+                <View key={item.label} style={styles.settingItem}>
+                  {icon}
+                  {label}
+                  <Pressable onPress={item.onPress} accessibilityRole="button" style={styles.settingValueRow}>
+                    {valueAndChevron}
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         ))}
 

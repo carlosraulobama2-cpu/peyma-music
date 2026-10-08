@@ -42,7 +42,7 @@ export default function LegalScreen() {
   const styles = useThemedStyles(makeStyles);
 
   const page = PAGES[slug ?? ''];
-  const esLegal = slug === 'terms' || slug === 'privacy';
+  const esLegal = slug === 'terminos' || slug === 'privacidad';
 
   if (!page) {
     return (
