@@ -166,8 +166,16 @@ app.get('/ready', async (_req, res) => {
 // disco cuando NO hay bucket: con S3/R2 los sirve el bucket (o su CDN) y las
 // URL guardadas en la base ya son absolutas, así que montar esto además
 // dejaría una segunda ruta hacia archivos que aquí no existen.
+//
+// `helmet()` pone `Cross-Origin-Resource-Policy: same-origin` en TODA
+// respuesta por defecto — bien para la API (JSON que no debería leer otro
+// origen), pero rompe justo lo que esta ruta existe para hacer: la web y el
+// panel, que viven en otro origen que la API, necesitan poder MOSTRAR estas
+// portadas y avatares. Sin este override el navegador pedía el archivo,
+// recibía 200, y lo descartaba igual (`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`)
+// antes de pintarlo — la portada se veía rota aunque el archivo existiera.
 if (!isUsingObjectStorage) {
-  app.use(UPLOADS_STATIC_PREFIX, express.static(UPLOADS_STATIC_ROOT));
+  app.use(UPLOADS_STATIC_PREFIX, helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }), express.static(UPLOADS_STATIC_ROOT));
 }
 
 app.use('/api/auth', authRoutes);
