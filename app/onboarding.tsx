@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, ScrollView, Pressable, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInRight, FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, toast } from '../src/store';
-import { Button } from '../src/components';
+import { Button, AuthBackdrop, buildMosaicImages } from '../src/components';
 import { http } from '../src/services/httpClient';
+import { api } from '../src/services';
+import { useAsyncData } from '../src/hooks';
 import { evaluatePassword, MIN_PASSWORD_LENGTH } from '../src/utils/passwordStrength';
 import { TERMS_VERSION } from '../src/legal';
-import { useTheme, useThemedStyles, spacing, typography, motion, radius, type Theme } from '../src/theme';
+import { getPalette, spacing, typography, motion, radius, type Theme } from '../src/theme';
 
 /**
  * Alta de cuenta, en pasos.
@@ -42,8 +44,15 @@ interface GenreCard {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  // Siempre oscuro, sin importar Ajustes → Apariencia — mismo motivo que
+  // `app/login.tsx`: ver el comentario de `AuthBackdrop`
+  // (src/components/AuthBackdrop.tsx).
+  const theme = useMemo<Theme>(() => ({ mode: 'dark', colors: getPalette('dark'), isDark: true }), []);
+  const { colors } = theme;
+  const styles = useMemo(() => StyleSheet.create(makeStyles(theme)), [theme]);
+
+  const { data: homeFeed } = useAsyncData((signal) => api.getHomeFeed({ signal }), []);
+  const mosaicImages = useMemo(() => buildMosaicImages(homeFeed), [homeFeed]);
 
   const register = useAuthStore((s) => s.register);
   const isSubmitting = useAuthStore((s) => s.isSubmitting);
@@ -146,6 +155,7 @@ export default function OnboardingScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AuthBackdrop images={mosaicImages} />
       <View style={[styles.container, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.topBar}>
           {stepIndex > 0 ? (

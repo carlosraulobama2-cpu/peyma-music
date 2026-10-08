@@ -30,3 +30,6 @@ export { MiniBarChart } from './MiniBarChart';
 export { ProgressBar } from './ProgressBar';
 export { MiniPlayer } from './MiniPlayer';
 export { AvatarPicker } from './AvatarPicker';
+
+// Cuenta (login / alta)
+export { AuthBackdrop, buildMosaicImages, type MosaicImage } from './AuthBackdrop';

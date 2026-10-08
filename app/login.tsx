@@ -1,111 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ActivityIndicator,
-  StyleSheet,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { useAuthStore, toast } from '../src/store';
-import { Button } from '../src/components';
+import { Button, AuthBackdrop, buildMosaicImages } from '../src/components';
 import { getPalette, spacing, typography, motion, radius, type Theme } from '../src/theme';
 import { getInitials } from '../src/utils';
 import { signInWithGoogle, isGoogleSignInCancelled, isGoogleSignInConfigured } from '../src/services/googleSignIn';
 import { useAsyncData } from '../src/hooks';
-import { api, type HomeFeed } from '../src/services';
-
-/**
- * Fondo del login: mosaico con portadas y fotos de artistas reales del
- * catálogo — el mismo tratamiento que el landing de la web (mismo motivo:
- * nada de fotos de stock de alguien con auriculares, la prueba de que hay
- * música real es la música real).
- *
- * Es siempre oscuro, sin importar el tema elegido en Ajustes: es un momento
- * de marca (como el login de Spotify o Apple Music), no una pantalla de
- * datos que deba respetar "claro/oscuro". Los colores son literalmente los
- * de la paleta oscura (`src/theme/tokens.ts`), no inventados, para que
- * coincida en todo con el resto de la app en modo oscuro.
- */
-interface MosaicImage {
-  id: string;
-  src: string;
-}
-
-function buildMosaicImages(feed: HomeFeed | null): MosaicImage[] {
-  if (!feed) return [];
-  const deTracks = feed.rows
-    .flatMap((row) => row.tracks)
-    .map((track) => ({ id: `track-${track.id}`, src: track.coverUrl }));
-  const deArtistas = feed.artists.map((artist) => ({ id: `artist-${artist.id}`, src: artist.imageUrl }));
-
-  const mezcla: MosaicImage[] = [];
-  let it = 0;
-  let ia = 0;
-  while (it < deTracks.length || ia < deArtistas.length) {
-    if (it < deTracks.length) mezcla.push(deTracks[it++]);
-    if (it < deTracks.length) mezcla.push(deTracks[it++]);
-    if (ia < deArtistas.length) mezcla.push(deArtistas[ia++]);
-  }
-  return mezcla;
-}
-
-const MOSAIC_COLUMNAS = 5;
-const MOSAIC_CELDAS = 40;
-
-function LoginBackdrop({ images }: { images: MosaicImage[] }) {
-  if (images.length === 0) {
-    // Sin catálogo (API caída o sin conexión) el login no se queda en
-    // blanco: cae al fondo oscuro liso de siempre.
-    return <View style={[StyleSheet.absoluteFill, loginBackdropStyles.fallback]} />;
-  }
-
-  const celdas = Array.from({ length: MOSAIC_CELDAS }, (_, indice) => images[indice % images.length]);
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={loginBackdropStyles.grid}>
-        {celdas.map((imagen, indice) => (
-          <Image
-            key={`${imagen.id}-${indice}`}
-            source={imagen.src}
-            style={loginBackdropStyles.cell}
-            contentFit="cover"
-          />
-        ))}
-      </View>
-      <LinearGradient
-        colors={['rgba(10,10,10,0.45)', 'rgba(10,10,10,0.65)', '#0A0A0A']}
-        locations={[0, 0.5, 0.92]}
-        style={StyleSheet.absoluteFill}
-      />
-    </View>
-  );
-}
-
-const loginBackdropStyles = StyleSheet.create({
-  fallback: {
-    backgroundColor: '#0A0A0A',
-  },
-  grid: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  cell: {
-    width: `${100 / MOSAIC_COLUMNAS}%`,
-    aspectRatio: 1,
-    opacity: 0.6,
-  },
-});
+import { api } from '../src/services';
 
 /**
  * Login en tres pasos, al estilo Spotify/Apple: correo → contraseña →
@@ -122,8 +27,9 @@ export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Siempre oscuro, sin importar Ajustes → Apariencia: ver el comentario de
-  // `LoginBackdrop` más arriba. No se usa `useTheme()`/`useThemedStyles` a
-  // propósito, porque esos siguen la preferencia del usuario.
+  // `AuthBackdrop` (src/components/AuthBackdrop.tsx). No se usa
+  // `useTheme()`/`useThemedStyles` a propósito, porque esos siguen la
+  // preferencia del usuario.
   const theme = useMemo<Theme>(() => ({ mode: 'dark', colors: getPalette('dark'), isDark: true }), []);
   const { colors } = theme;
   const styles = useMemo(() => StyleSheet.create(makeStyles(theme)), [theme]);
@@ -206,7 +112,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <LoginBackdrop images={mosaicImages} />
+      <AuthBackdrop images={mosaicImages} />
       <View style={[styles.container, { paddingTop: insets.top + spacing.xl }]}>
         <View style={styles.topBar}>
           {step !== 'confirm' && stepIndex > 0 ? (
