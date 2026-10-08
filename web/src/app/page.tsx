@@ -86,14 +86,18 @@ function VerificadoIcon({ className = "" }: { className?: string }) {
 }
 
 /**
- * Cinta de portadas del hero.
+ * Cinta de portadas.
  *
  * La tira se duplica (`aria-hidden` en la copia) porque el bucle CSS mueve
  * el contenedor media anchura: sin la copia se vería el hueco al reiniciar.
  * La duración crece con el número de portadas para que la velocidad
  * aparente sea la misma con 8 que con 24.
+ *
+ * `compact` la reduce a una tira puramente visual (sin título ni artista)
+ * para usarla como separador de transición debajo del hero, donde ya hay
+ * bastante texto — una segunda lectura ahí compite en vez de sumar.
  */
-function CoverMarquee({ tracks }: { tracks: LandingTrack[] }) {
+function CoverMarquee({ tracks, compact = false }: { tracks: LandingTrack[]; compact?: boolean }) {
   if (tracks.length === 0) return null;
 
   const tira = [...tracks, ...tracks];
@@ -114,18 +118,77 @@ function CoverMarquee({ tracks }: { tracks: LandingTrack[] }) {
           <div
             key={`${track.id}-${indice}`}
             aria-hidden={indice >= tracks.length}
-            className="w-32 shrink-0 sm:w-40"
+            className={compact ? "w-16 shrink-0 sm:w-20" : "w-32 shrink-0 sm:w-40"}
           >
             <Cover
               src={track.coverUrl}
               alt={`Portada de ${track.title}`}
-              className="aspect-square w-full rounded-xl shadow-lg shadow-black/40"
+              className={`aspect-square w-full rounded-xl shadow-lg shadow-black/40 ${compact ? "rounded-lg" : ""}`}
             />
-            <p className="mt-2 truncate text-xs font-semibold">{track.title}</p>
-            <p className="truncate text-xs text-muted">{track.artist.name}</p>
+            {!compact && (
+              <>
+                <p className="mt-2 truncate text-xs font-semibold">{track.title}</p>
+                <p className="truncate text-xs text-muted">{track.artist.name}</p>
+              </>
+            )}
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface MosaicImage {
+  id: string;
+  src: string;
+  alt: string;
+}
+
+/**
+ * Fondo del hero: un mosaico con portadas reales del catálogo y fotos de
+ * artistas intercaladas — "música" y "gente que la hace", sin recurrir a
+ * fotos de stock que no tienen nada que ver con lo que hay adentro.
+ *
+ * Dos portadas por cada foto de artista: así la textura la dominan tapas de
+ * disco (más variedad de color) con caras reales salpicadas, no al revés.
+ */
+function buildMosaicImages(tracks: LandingTrack[], artists: LandingArtist[]): MosaicImage[] {
+  const deTracks = tracks
+    .filter((track) => track.coverUrl)
+    .map((track) => ({ id: `track-${track.id}`, src: track.coverUrl as string, alt: `Portada de ${track.title}` }));
+  const deArtistas = artists
+    .filter((artist) => artist.imageUrl)
+    .map((artist) => ({ id: `artist-${artist.id}`, src: artist.imageUrl as string, alt: `Foto de ${artist.name}` }));
+
+  const mezcla: MosaicImage[] = [];
+  let indiceTrack = 0;
+  let indiceArtista = 0;
+  while (indiceTrack < deTracks.length || indiceArtista < deArtistas.length) {
+    if (indiceTrack < deTracks.length) mezcla.push(deTracks[indiceTrack++]);
+    if (indiceTrack < deTracks.length) mezcla.push(deTracks[indiceTrack++]);
+    if (indiceArtista < deArtistas.length) mezcla.push(deArtistas[indiceArtista++]);
+  }
+  return mezcla;
+}
+
+/**
+ * Se repiten las imágenes disponibles hasta rellenar una grilla fija de
+ * celdas cuadradas y parejas: con un catálogo chico (recién estrenado) la
+ * repetición no se nota detrás del degradado, y con uno grande se ve
+ * variado sin tener que pedir más datos de los que ya trae la portada.
+ */
+function HeroMosaic({ images }: { images: MosaicImage[] }) {
+  const TOTAL_CELDAS = 60;
+  const celdas = Array.from({ length: TOTAL_CELDAS }, (_, indice) => images[indice % images.length]);
+
+  return (
+    <div className="grid h-full grid-cols-6 auto-rows-[72px] gap-1 sm:grid-cols-8 sm:auto-rows-[92px] sm:gap-1.5 lg:grid-cols-10">
+      {celdas.map((imagen, indice) => (
+        <div key={`${imagen.id}-${indice}`} className="overflow-hidden rounded-md sm:rounded-lg">
+          {/* eslint-disable-next-line @next/next/no-img-element -- portadas del backend, sin dominio fijo para next/image */}
+          <img src={imagen.src} alt="" aria-hidden loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -185,18 +248,10 @@ export default async function LandingPage() {
   const destacadas = tracks.slice(0, 6);
   const paraCinta = tracks.slice(0, 14);
   const artistasVisibles = artists.slice(0, 10);
+  const imagenesMosaico = buildMosaicImages(tracks, artists);
 
   return (
     <main className="relative flex-1 overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[900px]"
-        style={{
-          background:
-            "radial-gradient(900px circle at 15% -5%, rgba(29,185,84,0.2), transparent 55%), radial-gradient(700px circle at 85% 10%, rgba(29,185,84,0.09), transparent 55%)",
-        }}
-      />
-
       <header className="sticky top-0 z-[100] border-b border-white/5 bg-background/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
           <span className="text-xl font-bold tracking-tight">Peyma Music</span>
@@ -218,55 +273,87 @@ export default async function LandingPage() {
       </header>
 
       {/* ------------------------------------------------------------------
-          Hero. En escritorio va a dos columnas para que la cinta de portadas
-          se vea sin desplazar; apilado en móvil, donde una columna estrecha
-          con imagen al lado no entra.
+          Hero. El fondo es un mosaico con portadas y fotos de artistas
+          reales del catálogo — la prueba de que hay música de verdad detrás,
+          no una foto de stock de alguien con auriculares. Un velo oscuro
+          encima es lo que deja leer el título: la jerarquía no la da sólo
+          el tamaño de la letra, la da el contraste contra ese fondo.
       ------------------------------------------------------------------ */}
-      {/* `minmax(0,1fr)` en la segunda columna, no `1fr` a secas: la cinta de
-          portadas mide `max-content` (es una tira larguísima) y una pista
-          `1fr` tiene mínimo `auto`, así que la columna crecía hasta caber la
-          tira entera y dejaba el titular en una tira de texto de 250 px. */}
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24 lg:grid-cols-[1.05fr_minmax(0,1fr)]">
-        <div>
-          <p className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand">
-            Música independiente
-          </p>
-          <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-balance sm:text-6xl">
-            La música de acá, sonando en todos lados
-          </h1>
-          <p className="mt-6 max-w-xl text-lg text-muted text-balance">
-            Descubrí artistas independientes, armá tus playlists y llevátelas al teléfono. Y si hacés música, publicala
-            vos mismo: sin sello, sin distribuidora y sin esperar meses.
-          </p>
-
-          <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            {/* `whitespace-nowrap`: una llamada a la acción partida en dos
-                renglones dentro de una píldora se lee como un error. */}
-            <Link
-              href="/register"
-              className="whitespace-nowrap rounded-full bg-brand px-9 py-3.5 text-center text-base font-bold text-black transition-all duration-300 ease-in-out hover:scale-105 hover:bg-brand-hover"
-            >
-              Registrate gratis
-            </Link>
-            <Link
-              href="/login"
-              className="whitespace-nowrap rounded-full border border-white/25 px-9 py-3.5 text-center text-base font-bold transition-colors hover:border-white"
-            >
-              Ya tengo cuenta
-            </Link>
-          </div>
-
-          <p className="mt-5 text-sm text-muted">Gratis para siempre. No pedimos tarjeta de crédito.</p>
+      <section className="relative">
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          {imagenesMosaico.length > 0 ? (
+            <div className="h-full opacity-45 saturate-150 sm:opacity-55">
+              <HeroMosaic images={imagenesMosaico} />
+            </div>
+          ) : (
+            // Sin catálogo (API caída o recién desplegada) el hero no se
+            // queda en blanco: vuelve al resplandor de marca liso de siempre.
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(900px circle at 15% -5%, rgba(29,185,84,0.25), transparent 55%), radial-gradient(700px circle at 85% 10%, rgba(29,185,84,0.12), transparent 55%)",
+              }}
+            />
+          )}
+          <div aria-hidden className="absolute inset-0 bg-background/60" />
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(1000px circle at 10% 0%, rgba(29,185,84,0.22), transparent 55%), linear-gradient(to bottom, transparent 0%, var(--background) 100%)",
+            }}
+          />
         </div>
 
-        {/* Sin catálogo no se dibuja una caja vacía: el hero se queda a una
-            columna y no se nota que falta nada. */}
-        {paraCinta.length > 0 && (
-          <div className="min-w-0 lg:-mr-16">
-            <CoverMarquee tracks={paraCinta} />
+        <div className="mx-auto max-w-6xl px-6 pb-20 pt-16 sm:px-8 sm:pb-28 sm:pt-24 lg:pb-32 lg:pt-32">
+          <div className="max-w-xl">
+            <p className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand backdrop-blur-sm">
+              Música independiente
+            </p>
+            {/* Una sola palabra en verde de marca: la jerarquía de color no es
+                decorativa, marca qué leer primero en el titular más largo de
+                la página. */}
+            <h1 className="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight text-balance sm:text-6xl">
+              La música de acá, <span className="text-brand">sonando</span> en todos lados
+            </h1>
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted text-balance">
+              Descubrí artistas independientes, armá tus playlists y llevátelas al teléfono. Y si hacés música,
+              publicala vos mismo: sin sello, sin distribuidora y sin esperar meses.
+            </p>
+
+            <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+              {/* `whitespace-nowrap`: una llamada a la acción partida en dos
+                  renglones dentro de una píldora se lee como un error. */}
+              <Link
+                href="/register"
+                className="whitespace-nowrap rounded-full bg-brand px-9 py-3.5 text-center text-base font-bold text-black shadow-[0_8px_30px_-6px_rgba(29,185,84,0.55)] transition-all duration-300 ease-in-out hover:scale-105 hover:bg-brand-hover"
+              >
+                Registrate gratis
+              </Link>
+              <Link
+                href="/login"
+                className="whitespace-nowrap rounded-full border border-white/30 bg-background/40 px-9 py-3.5 text-center text-base font-bold backdrop-blur-sm transition-colors hover:border-white"
+              >
+                Ya tengo cuenta
+              </Link>
+            </div>
+
+            <p className="mt-5 text-sm text-muted">Gratis para siempre. No pedimos tarjeta de crédito.</p>
           </div>
-        )}
+        </div>
       </section>
+
+      {/* Transición hero → catálogo: la misma cinta de siempre, más chica y
+          sin texto, de puente entre el mosaico de fondo y el resto, ya sobre
+          fondo sólido. */}
+      {paraCinta.length > 0 && (
+        <div className="border-y border-white/5 bg-surface/40 py-5">
+          <CoverMarquee tracks={paraCinta} compact />
+        </div>
+      )}
 
       {destacadas.length > 0 && (
         <section className="mx-auto max-w-6xl px-6 pb-20 sm:px-8">
